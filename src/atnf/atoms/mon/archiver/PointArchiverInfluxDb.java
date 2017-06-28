@@ -43,7 +43,7 @@ public class PointArchiverInfluxDb extends PointArchiver{
   /**
    * InfluxDB Diamonica database name
    */
-  private static String databaseName = "DiaMonica";
+  private static String databaseName = "askap_realtime";
 
   /**
    * Global retention policy
@@ -63,7 +63,7 @@ public class PointArchiverInfluxDb extends PointArchiver{
   /**
    * Tag file location
    */
-  private String tagFilePath = "/home/nicralph/csiro_influxmaven/Parkes.properties";
+  private String tagFilePath = "/askap/default/config/askap.properties";
 
   /**
    * Maximum chunk size
