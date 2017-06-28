@@ -172,7 +172,6 @@ public class PointArchiverInfluxDb extends PointArchiver{
    */
   protected boolean isConnected() {
     boolean influxDBConnection = false;
-    this.influxDB = InfluxDBFactory.connect((itsURL + ":" + port), "admin", "admin");
     Pong response;
     try {
       response = this.influxDB.ping();
