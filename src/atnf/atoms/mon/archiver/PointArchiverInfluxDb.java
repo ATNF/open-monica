@@ -300,8 +300,11 @@ public class PointArchiverInfluxDb extends PointArchiver{
    * @param pd Vector of data to be archived.
    */
   protected void saveNow(PointDescription pm, Vector<PointData> pd) {
+    String measurementName;
+    String fieldName;
     Long pointTime;
     Object pointValueObj;
+    double pointValue = 0.0;
     boolean pointAlarm;
     String pointUnits = pm.getUnits();
     Map<String, String> tagMap;
@@ -316,22 +319,37 @@ public class PointArchiverInfluxDb extends PointArchiver{
         for (int i = 0; i < pd.size(); i++) {
               try { //extract point data and metadata to write to influx
                 PointData pointData = pd.get(i);
-                pointTime = pointData.getTimestamp().getValue();
+                String pointName = pm.getName();
+
+                int lastIndex = pointName.lastIndexOf('.');
+
+                // field name is last part of MoniCA point name
+                // measuremnt name is the first part 
+                measurementName = pointName.substring(0, lastIndex);
+                fieldName = pointName.substring(lastIndex + 1);
+
+                // pointTime in a BAT time so convert to epoch
+                pointTime = pointData.getTimestamp().getAsDate().getTime();
                 pointValueObj = pointData.getData();
+                if (pointValueObj instanceof Number) {
+                    pointValue = ((Number)pointValueObj).doubleValue();
+                }
                 pointAlarm = pointData.getAlarm();
+                System.out.println("CRH measurement " + measurementName + " time " + pointTime);
                 //get tags
                 tagMap = tagExtractor.fromProperties(tagFilePath).tags;
+                System.out.println("CRH tags " + tagMap);
               } catch (Exception e) {
                 e.printStackTrace();
                 continue;
               }
               try { //flush to influx
-                Point point1 = Point.measurement(pm.getName())
-                        .time(pointTime, TimeUnit.SECONDS)
-                        .addField("Units", pointUnits)
-                        .addField(pm.getName(), pointValueObj.toString())
-                        .addField("Alarm", pointAlarm)
-                        .tag(tagMap)
+                Point point1 = Point.measurement(measurementName)
+                        .time(pointTime, TimeUnit.MILLISECONDS)
+                        .addField(fieldName, pointValue)
+                        //.addField("Units", pointUnits)
+                        //.addField("Alarm", pointAlarm)
+                        ///.tag(tagMap)
                         .build();
                 batchPoints.point(point1);
                 influxDB.write(batchPoints);
