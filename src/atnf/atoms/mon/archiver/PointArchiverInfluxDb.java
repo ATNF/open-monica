@@ -2,13 +2,20 @@ package atnf.atoms.mon.archiver;
 
 import atnf.atoms.mon.PointData;
 import atnf.atoms.mon.PointDescription;
+import atnf.atoms.mon.util.MonitorConfig;
 import atnf.atoms.time.AbsTime;
-
+import atnf.atoms.time.RelTime;
+import au.csiro.pbdava.diamonica.etl.influx.TagExtractor;
+import au.csiro.pbdava.diamonica.etl.influx.OrderedProperties;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.sql.*;
-import java.util.*;
+import java.time.Instant;
+import java.util.Vector;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -16,6 +23,11 @@ import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
 import org.influxdb.dto.*;
 import org.influxdb.InfluxDB.LogLevel;
+import org.apache.log4j.Logger;
+
+// todo worker thread for save now
+// put all config options in config file
+
 
 
 /**
@@ -33,8 +45,6 @@ import org.influxdb.InfluxDB.LogLevel;
 
 public class PointArchiverInfluxDb extends PointArchiver{
 
-  private InfluxDB influxDB;
-
   /**
    *  InfluxDB port number (default)
    */
@@ -46,6 +56,12 @@ public class PointArchiverInfluxDb extends PointArchiver{
   private static String databaseName = "askap_realtime";
 
   /**
+   * ASKAP site prefix, needed for matching atennas vs blocks
+   * but what about other sites
+   */
+  private static String site = "rw";
+
+  /**
    * Global retention policy
    */
   private static String retentionPolicy = "autogen";
@@ -53,18 +69,23 @@ public class PointArchiverInfluxDb extends PointArchiver{
   /**
    * The connection to the InfluxDB server.
    */
-  private Connection itsConnection = null;
+  private InfluxDB influxDB = null;
+
 
   /**
    * The URL to connect to the server/database.
    */
-  private String itsURL = "http://localhost:8086";
+  private static String itsURL = "http://localhost:8086";
 
   /**
    * Tag file location
    */
-  private String tagFilePath = "/askap/default/config/askap.properties";
+  private static String tagFilePath = "/home/has09e/etc/monica/rw.properties";
+  
+  protected static long theirInfluxBatchSize = 1000;
+  protected static long theirInfluxBatchAge = 1000;
 
+  private Map<String, TagExtractor> tags = null;
   /**
    * Maximum chunk size
    */
@@ -84,60 +105,39 @@ public class PointArchiverInfluxDb extends PointArchiver{
           .consistency(InfluxDB.ConsistencyLevel.ALL)
           .build();
 
-  /**
-   * Tag Extraction private class
-   */
-  private class TagExtractor{
+  private long itsOldestPointTime = 0;
+  private long itsNewestPointTime = 0;
+  private long itsLastWriteTime = 0;
 
-    private String tagfile;
-    private String replace;
-    private Pattern pattern;
-    private Map<String, String> tags;
-    private static final String REGEX_DOT_OR_END = "($|[._])";
-    private static final String REGEX_DOT_OR_START = "(^|[._])";
-
-    public TagExtractor(String pattern) {
-      this(pattern, "");
+  /** Static block to parse flush parameters. */
+  static {
+    try {
+      String param= MonitorConfig.getProperty("InfluxURL", "http://localhost:8086");
+      itsURL = param;
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchSize configuration parameter: " + e);
     }
-
-    public TagExtractor(String pattern, String replace) {
-      this.pattern = Pattern.compile(REGEX_DOT_OR_START + "(" + pattern + ")" + REGEX_DOT_OR_END);
-      this.replace = replace;
+    try {
+      String param= MonitorConfig.getProperty("InfluxTagMap");
+      tagFilePath = param;
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxTagMap configuration parameter: " + e);
     }
-
-    public TagExtractor(Map<String, String> tags){
-      this.tags = tags;
+    try {
+      long param = Integer.parseInt(MonitorConfig.getProperty("InfluxBatchSize", "1000"));
+      theirInfluxBatchSize = param;
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchSize configuration parameter: " + e);
     }
-
-    /**
-     *
-     * @param s input string to convert to tag convention
-     * @return TagExtractor object as Map<String, String> of tags
-     */
-    public TagExtractor fromString(String s) {
-      String[] parts = s.split(" ");
-      return (parts.length) > 1 ? new TagExtractor(parts[0], parts[1]):new TagExtractor(parts[0]);
-    }
-    public TagExtractor(){}
-
-    /**
-     *
-     * @param pathToTagFile, file path to "site".properties file with regex strings
-     * @return tagExtactor object (Map<String, String>)
-     * @throws IOException
-     */
-    public TagExtractor fromProperties(String pathToTagFile) throws IOException {
-      final Properties tagProperties = new Properties();
-      File tagFile = new File(pathToTagFile);
-      FileInputStream fileInput = new FileInputStream(tagFile);
-      tagProperties.load(fileInput);
-      //LoanUtils.withCloseable(new FileInputStream(pathToTagFile), tagProperties::load); ORIGINAL implementation
-      final Map<String, String> tagMap = new HashMap<String, String>();
-      tagProperties.forEach((k,v) -> tagMap.put(k.toString(), v.toString()));
-      return new TagExtractor(tagMap);
+    
+    try {
+      long param = 1000 * Integer.parseInt(MonitorConfig.getProperty("InfluxBatchAge", "1"));
+      theirInfluxBatchAge = param;
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchAge configuration parameter: " + e);
     }
   }
-
+  
   /**
    * Create a influxDB connection
    *
@@ -163,6 +163,11 @@ public class PointArchiverInfluxDb extends PointArchiver{
     System.out.println("################################################################################## ");
     System.out.println("#  Connected to InfluxDB Version: " + this.influxDB.version() + " #");
     System.out.println("##################################################################################");
+
+    // load tags
+    final OrderedProperties tagProperties = OrderedProperties.getInstance(tagFilePath);
+    tags = new LinkedHashMap<String, TagExtractor>();
+    tagProperties.getProperties().forEach((k,v) -> tags.put(k, TagExtractor.fromString(v.replace("$(site)", site))));
   }
 
   /**
@@ -171,18 +176,7 @@ public class PointArchiverInfluxDb extends PointArchiver{
    * @return True if connected (or reconnected). False if not connected.
    */
   protected boolean isConnected() {
-    boolean influxDBConnection = false;
-    Pong response;
-    try {
-      response = this.influxDB.ping();
-      if (!response.getVersion().equalsIgnoreCase("unknown")) {
-        influxDBConnection = true;
-      }
-    } catch (Exception e) {
-      System.out.println("InfluxDB not connected: ");
-      e.printStackTrace();
-    }
-    return influxDBConnection;
+    return influxDB != null;
   }
 
   /**
@@ -219,7 +213,7 @@ public class PointArchiverInfluxDb extends PointArchiver{
               + " where time >=" + start.getValue()
               + " and time <=" + end.getValue();
       QueryResult qout;
-      synchronized (itsConnection) {
+      synchronized (influxDB) {
         Query query = new Query(cmd, databaseName);
         qout = influxDB.query(query);
         qout.getResults();
@@ -300,45 +294,56 @@ public class PointArchiverInfluxDb extends PointArchiver{
    * @param pd Vector of data to be archived.
    */
   protected void saveNow(PointDescription pm, Vector<PointData> pd) {
-    String measurementName;
-    String fieldName;
     Long pointTime;
     Object pointValueObj;
     double pointValue = 0.0;
     boolean pointAlarm;
     String pointUnits = pm.getUnits();
-    Map<String, String> tagMap;
-    TagExtractor tagExtractor = new TagExtractor();
-    try {
-      setUp();
-    } catch (Exception e) {
-      e.printStackTrace();
+    String pointName = pm.getSource() + "." + pm.getName();
+
+    if(itsShuttingDown) {
+      return;
     }
-    while (isConnected()) {
+
+    if (!isConnected()) {
+      try {
+        setUp();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
+
+    final Map<String,String> tagValues = new HashMap<String, String>();
+    //final TagExtractor.Holder nameHolder = new TagExtractor.Holder(pointName.replaceAll("trd_lrd", "timing"));
+    final TagExtractor.Holder nameHolder = new TagExtractor.Holder(pointName);
+    tags.forEach((n, te)-> te.apply(nameHolder).ifPresent(v -> tagValues.put(n, v)));
+
+    // field name is last part of MoniCA point name
+    // measurement name is the first part
+    String name = nameHolder.get();
+    int valueNameSepIndex = name.lastIndexOf(".");
+    String measurementName = name.substring(0, valueNameSepIndex);
+    String fieldName = name.substring(valueNameSepIndex+1);
+
       synchronized (pd) {
         for (int i = 0; i < pd.size(); i++) {
               try { //extract point data and metadata to write to influx
                 PointData pointData = pd.get(i);
-                String pointName = pm.getName();
-
-                int lastIndex = pointName.lastIndexOf('.');
-
-                // field name is last part of MoniCA point name
-                // measuremnt name is the first part 
-                measurementName = pointName.substring(0, lastIndex);
-                fieldName = pointName.substring(lastIndex + 1);
 
                 // pointTime in a BAT time so convert to epoch
                 pointTime = pointData.getTimestamp().getAsDate().getTime();
+                if (pointTime < itsOldestPointTime || itsOldestPointTime == 0) {
+                  itsOldestPointTime = pointTime;
+                }
+                if (pointTime > itsNewestPointTime || itsNewestPointTime == 0) {
+                  itsNewestPointTime = pointTime;
+                }
                 pointValueObj = pointData.getData();
                 if (pointValueObj instanceof Number) {
                     pointValue = ((Number)pointValueObj).doubleValue();
                 }
                 pointAlarm = pointData.getAlarm();
-                System.out.println("CRH measurement " + measurementName + " time " + pointTime);
-                //get tags
-                tagMap = tagExtractor.fromProperties(tagFilePath).tags;
-                System.out.println("CRH tags " + tagMap);
+                //itsLogger.info(/"CRH measurement " + measurementName + " time " + pointTime + " tags " + tagValues);
               } catch (Exception e) {
                 e.printStackTrace();
                 continue;
@@ -349,18 +354,44 @@ public class PointArchiverInfluxDb extends PointArchiver{
                         .addField(fieldName, pointValue)
                         //.addField("Units", pointUnits)
                         //.addField("Alarm", pointAlarm)
-                        ///.tag(tagMap)
+                        .tag(tagValues)
                         .build();
-                batchPoints.point(point1);
-                influxDB.write(batchPoints);
+                  batchPoints.point(point1);
               } catch (Exception a) {
                 a.printStackTrace();
               }
-        } //close database and clear point data objects
+        }
+        //itsLogger.info("flushing " + pd.size() + " points from " + itsOldestPointTime + " to " + itsNewestPointTime);
+        long elapsedPoint = Instant.now().toEpochMilli() - itsOldestPointTime;
+        long elapsedWrite = Instant.now().toEpochMilli() - itsLastWriteTime;
+        //if (itsOldestPointTime > 0) {
+        //    elapsed = Instant.now().toEpochMilli() - itsOldestPointTime;
+        //}
+        //else {
+        //  itsOldestPointTime = Instant.now().toEpochMilli();
+        //}
+        if (elapsedWrite > theirInfluxBatchAge || batchPoints.getPoints().size() >= theirInfluxBatchSize) {
+          itsLogger.info("sending " + batchPoints.getPoints().size() + " to influxdb age " + elapsedPoint);
+          influxDB.write(batchPoints);
+          batchPoints.getPoints().clear();
+          itsOldestPointTime = 0;
+          itsNewestPointTime = 0;
+          itsLastWriteTime = Instant.now().toEpochMilli();
+        }
+        else {
+          //itsLogger.info("not archiving " + pd.size() + " points, elapsed " + elapsed);
+        }
+        synchronized (itsBeingArchived) {
+          itsBeingArchived.remove(pm.getFullName());
+        }
         pd.clear();
-        influxDB.close();
+        if ( itsShuttingDown) {
+          itsLogger.info("closing influxdb connection");
+          influxDB.close();
+          influxDB = null;
+          pd.clear();
+        }
       }
-    }
   }
 
   /**
@@ -477,15 +508,7 @@ public class PointArchiverInfluxDb extends PointArchiver{
    * @throws IOException
    */
   public void flush() throws IOException {
-    if (batchPoints != null) {
-      boolean connection = isConnected();
-      if (!connection) {
-        try {
-          setUp();
-        }catch (Exception e){
-          e.printStackTrace();
-        }
-      }
+    if (batchPoints != null && isConnected()) {
       influxDB.write(batchPoints);
     }
   }
