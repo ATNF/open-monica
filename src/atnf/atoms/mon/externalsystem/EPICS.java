@@ -20,6 +20,8 @@ import gov.aps.jca.*;
 import gov.aps.jca.dbr.*;
 import gov.aps.jca.event.*;
 
+import com.cosylab.epics.caj.*;
+
 import org.apache.log4j.Logger;
 
 /**
@@ -42,6 +44,7 @@ import org.apache.log4j.Logger;
  * 
  * @author David Brodrick
  */
+//public class EPICS extends ExternalSystem implements ContextExceptionListener {
 public class EPICS extends ExternalSystem {
   /** Logger. */
   protected static Logger theirLogger = Logger.getLogger(EPICS.class.getName());
@@ -74,6 +77,7 @@ public class EPICS extends ExternalSystem {
     try {
       // Create context with default configuration values.
       itsContext = jca.createContext(JCALibrary.CHANNEL_ACCESS_JAVA);
+      //itsContext.addContextExceptionListener(this);
     } catch (Exception e) {
       theirLogger.error("Creating Context: " + e);
     }
@@ -124,6 +128,7 @@ public class EPICS extends ExternalSystem {
 
           if (thischan.getConnectionState() == Channel.ConnectionState.CONNECTED) {
             // Channel is connected, request data via a channel access 'get'
+
             try {
               asynchCollecting(points[i]);
               DBRType type = thistrans.getType();
@@ -160,6 +165,7 @@ public class EPICS extends ExternalSystem {
       theirLogger.error("In getData method, while flushing IO: " + e);
     }
   }
+
 
   /** Send a value from MoniCA to EPICS. */
   public void putData(PointDescription desc, PointData pd) throws Exception {
@@ -203,6 +209,14 @@ public class EPICS extends ExternalSystem {
       }
     }
   }
+
+//  public void contextException(ContextExceptionEvent ev) {
+//     System.out.println(ev.toString());
+//  }
+
+//  public void contextVirtualCircuitException(ContextVirtualCircuitExceptionEvent ev) {
+//      System.out.println(ev.toString());
+//  }
 
   /**
    * Thread which connects to EPICS channels and configures 'monitor' updates for points which request it.
@@ -260,10 +274,11 @@ public class EPICS extends ExternalSystem {
             continue;
           }
           try {
+
             // Create the Channel to connect to the PV.
             Channel thischan = itsContext.createChannel(thispv);
             newchannels.add(thischan);
-          } catch (Exception e) {
+           } catch (Exception e) {
             theirLogger.warn("ChannelConnector: Connecting Channel " + thispv + ": " + e);
           }
         }
@@ -302,7 +317,8 @@ public class EPICS extends ExternalSystem {
               thischan.destroy();
             } catch (Exception e) {
               e.printStackTrace();
-              theirLogger.error("ChannelConnector: Destroying channel for " + thispv + ": " + e);
+              theirLogger.error("ChannelConnector: Failed to destroy channel for " + thispv + ": " + e);
+	      thischan.dispose();
             }
           }
         }
@@ -331,11 +347,12 @@ public class EPICS extends ExternalSystem {
               theirLogger.warn("ChannelConnector: ERROR determining native DBRType for " + thispv + " - bad channel state?");
               try {
                 // This channel is broken. Try to reconnect later.
-                itsChannelMap.put(thispv, null);
-                thischan.destroy();
+                itsChannelMap.put(thispv, null);        
                 itsNeedsConnecting.add(thispv);
+		thischan.destroy();
               } catch (Exception f) {
-                theirLogger.error("ChannelConnector: Destroying channel for " + thispv + ": " + e);
+                theirLogger.error("ChannelConnector: Failed to destroy channel for " + thispv + ": " + e);
+		thischan.dispose();
               }
               continue;
             }
