@@ -37,13 +37,13 @@ public abstract class PointArchiver extends Thread {
   protected static int theirMaxRecordCount = 50;
 
   /** Maximum offset to be added to above based on hash of specific point name. */
-  protected static final int theirRecordCountOffset = 15;
+  protected static int theirRecordCountOffset = 15;
 
   /** The maximum amount of time since an update for the point before buffer should be flushed. */
   protected static RelTime theirMaxAge = RelTime.factory(-240000000);
 
   /** Maximum offset to be added to above based on hash of specific point name. */
-  protected static final long theirMaxAgeOffset = 60000000;
+  protected static long theirMaxAgeOffset = 60000000;
 
   /** Flag set when MoniCA has been requested to shut down. */
   protected boolean itsShuttingDown = false;
@@ -59,6 +59,12 @@ public abstract class PointArchiver extends Thread {
       Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing MaxFlushSize configuration parameter: " + e);
       theirMaxRecordCount = 50;
     }
+    try {
+      theirRecordCountOffset = Integer.parseInt(MonitorConfig.getProperty("MaxFlushSizeOffset", "15"));
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing MaxFlushSize configuration parameter: " + e);
+      theirRecordCountOffset = 15;
+    }
     int numsecs;
     try {
       numsecs = Integer.parseInt(MonitorConfig.getProperty("MaxFlushAge", "240"));
@@ -67,6 +73,13 @@ public abstract class PointArchiver extends Thread {
       numsecs = 240;
     }
     theirMaxAge = RelTime.factory(numsecs * -1000000);
+
+    try {
+      theirMaxAgeOffset = Integer.parseInt(MonitorConfig.getProperty("MaxFlushAgeOffset", "60000000"));
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing MaxFlushSize configuration parameter: " + e);
+      theirMaxRecordCount = 60000000;
+    }
   }
 
   /** Specify the archiver to be used for archiving all data. */
@@ -350,10 +363,16 @@ public abstract class PointArchiver extends Thread {
             // Add small offsets based on hash of point name.
             // This prevents bulk points all being flushed together each time.
             int namehash = pm.getFullName().hashCode();
-            int minnumrecs = theirMaxRecordCount + (namehash % theirRecordCountOffset);
-            AbsTime cutoff2 = cutoff.add(namehash % theirMaxAgeOffset);
+            int minnumrecs = theirMaxRecordCount;
+            if (theirRecordCountOffset > 0) {
+              minnumrecs += (namehash % theirRecordCountOffset);
+          	}
+            AbsTime cutoff2 = cutoff;
+            if (theirMaxAgeOffset > 0) {
+              cutoff2 = cutoff.add(namehash % theirMaxAgeOffset);
+            }
 
-            if (thisdata.size() < minnumrecs && thisdata.lastElement().getTimestamp().isAfter(cutoff2)) {
+              if (thisdata.size() < minnumrecs && thisdata.firstElement().getTimestamp().isAfter(cutoff2)) {
               // Point does not meet any criteria for writing to the archive at this time
               continue;
             }
@@ -374,9 +393,11 @@ public abstract class PointArchiver extends Thread {
 
           //itsLogger.debug("Archiving " + thisdata.size() + " records for " + pm.getFullName());
           saveNow(pm, thisdata);
-          try {
-            sleeptime2.sleep();
-          } catch (Exception e) {
+          if (theirMaxAgeOffset != 0 || theirRecordCountOffset != 0) {
+            try {
+              sleeptime2.sleep();
+            } catch (Exception e) {
+            }
           }
           counter++;
         }
