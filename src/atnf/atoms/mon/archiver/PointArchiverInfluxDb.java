@@ -355,7 +355,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
     for (int i = 0; i < pd.size(); i++) {
       try { //extract point data and metadata to write to influx
         PointData pointData = pd.get(i);
-        Object pointValueObj;
         boolean pointAlarm;
 
         // pointTime in a BAT time so convert to epoch
@@ -363,25 +362,26 @@ public class PointArchiverInfluxDb extends PointArchiver {
         if (pointTime < itsOldestPointTime || itsOldestPointTime == 0) {
           itsOldestPointTime = pointTime;
         }
-        pointValueObj = pointData.getData();
-        if (pointValueObj instanceof Number) {
-          pointValue = ((Number) pointValueObj).doubleValue();
-        }
         pointAlarm = pointData.getAlarm();
-        //itsLogger.info(/"CRH measurement " + measurementName + " time " + pointTime + " tags " + tagValues);
-      } catch (Exception e) {
-        e.printStackTrace();
-        continue;
-      }
-      try { //flush to influx
-        Point point1 = Point.measurement(measurementName)
+
+        Point.Builder pb = Point.measurement(measurementName)
                 .time(pointTime, TimeUnit.MILLISECONDS)
-                .addField(fieldName, pointValue)
-                //.addField("Units", pointUnits)
-                //.addField("Alarm", pointAlarm)
-                .tag(tagValues)
-                .build();
-        itsCurrentBatch.point(point1);
+                .tag(tagValues);
+
+        Object pointValueObj = pointData.getData();
+        if (pointData.getData() instanceof Double) {
+          pb.addField(fieldName, ((Number)pointValueObj).doubleValue());
+        }
+        else if (pointData.getData() instanceof Float) {
+          pb.addField(fieldName, ((Number)pointValueObj).floatValue());
+        }
+        else if (pointData.getData() instanceof Integer) {
+          pb.addField(fieldName, ((Number)pointValueObj).intValue());
+        }
+        else if (pointValueObj instanceof String) {
+          pb.addField(fieldName, (String)pointValueObj);
+        }
+        itsCurrentBatch.point(pb.build());
       } catch (Exception a) {
         a.printStackTrace();
       }
@@ -432,7 +432,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             rateStart = Instant.now().toEpochMilli();
             pointsPerMinute = 0;
           }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
           e.printStackTrace();
         }
 
