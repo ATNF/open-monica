@@ -40,12 +40,12 @@ public class PointArchiverInfluxDb extends PointArchiver {
   /**
    * InfluxDB database name
    */
-  private static String databaseName = MonitorConfig.getProperty("InfluxDB", "testing");
+  private static String theirDatabaseName = MonitorConfig.getProperty("InfluxDB", "testing");
 
   /**
    * Global retention policy
    */
-  private static String retentionPolicy = MonitorConfig.getProperty("InfluxRetensionPolicy", "autogen");
+  private static String theirRetentionPolicy = MonitorConfig.getProperty("InfluxRetensionPolicy", "autogen");
 
   /**
    * The URL to connect to the server/database.
@@ -65,30 +65,55 @@ public class PointArchiverInfluxDb extends PointArchiver {
   /**
    * Tag file location
    */
-  private static String tagFilePath = MonitorConfig.getProperty("InfluxTagMap", "");
+  private static String theirTagFilePath = MonitorConfig.getProperty("InfluxTagMap", "");
 
-  protected static long theirInfluxBatchSize = 1000;
-  protected static long theirInfluxBatchAge = 1000;
+  /**
+   * Maximum size of batch update (number of samples)
+   */
+  private static long theirInfluxBatchSize = 10000;
+
+  /**
+   * Maximum age of batch before flushing (in milliseconds)
+   */
+  private static long theirInfluxBatchAge = 10000;
+  
+  /**
+   * Toggle for ASCII archiver
+   */
+  private static Boolean theirChainToASCII = false;
+
 
   private Map<String, TagExtractor> tags = null;
-  /**
-   * Maximum chunk size
-   */
-  private int chunkSize = 5000;
 
   /**
-   * Total size
-   */
-  private long totalSize = 0L;
-
-  /**
-   * Batch points object, built with
+   * Queue of batch updates to send to InfluxDB server
    */
   private BlockingQueue<BatchPoints> itsBatchQueue = new LinkedBlockingQueue<BatchPoints>();
+
+  /**
+   * The current batch being created
+   */
   private BatchPoints itsCurrentBatch = null;
+
+  /**
+   * The oldest timestamp (epoch) in the current batch
+   */
   private long itsOldestPointTime = 0;
+
+  /**
+   * starting time of the current batch for computing batch age
+   */
   private long itsBatchStart = 0;
+
+  /**
+   * batch for metadata (long point description and units)
+   */
   private BatchPoints itsMetadataBatch = null;
+
+  /**
+   * Chained ASCII archiver
+   */
+  private static PointArchiverASCII itsChainedArchiver = null;
 
   Map<PointDescription, Map<String, String>> itsTagMap = new HashMap<>();
   Map<PointDescription, String> itsMeasurementNameMap = new HashMap<>();
@@ -115,6 +140,13 @@ public class PointArchiverInfluxDb extends PointArchiver {
     } catch (Exception e) {
       Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchAge configuration parameter: " + e);
     }
+    
+    try {
+      Boolean param = Boolean.parseBoolean(MonitorConfig.getProperty("InfluxChainToASCII", "false"));
+      theirChainToASCII = param;
+    } catch (Exception e) {
+      Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxChainToASCII : " + e);
+    }
   }
 
   /**
@@ -139,19 +171,25 @@ public class PointArchiverInfluxDb extends PointArchiver {
       Thread.sleep(100L);
     } while (!influxDBstarted);
     this.influxDB.setLogLevel(LogLevel.NONE);
-    System.out.println("################################################################################## ");
-    System.out.println("#  Connected to InfluxDB Version: " + this.influxDB.version() + " #");
-    System.out.println("##################################################################################");
+    itsLogger.info("################################################################################## ");
+    itsLogger.info("#  Connected to InfluxDB Version: " + this.influxDB.version() + " #");
+    itsLogger.info("##################################################################################");
 
     // load tags
-    final OrderedProperties tagProperties = OrderedProperties.getInstance(tagFilePath);
+    final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
     tags = new LinkedHashMap<String, TagExtractor>();
     tagProperties.getProperties().forEach((k, v) -> tags.put(k, TagExtractor.fromString(v)));
 
     // create databases
-    influxDB.createDatabase(databaseName);
-    influxDB.deleteDatabase(databaseName + "_metadata");
-    influxDB.createDatabase(databaseName + "_metadata");
+    influxDB.createDatabase(theirDatabaseName);
+    influxDB.deleteDatabase(theirDatabaseName + "_metadata");
+    influxDB.createDatabase(theirDatabaseName + "_metadata");
+
+    // chain the ASCII archiver
+    if (theirChainToASCII) {
+      itsLogger.info("chaining to ASCII archiver");
+      itsChainedArchiver = new PointArchiverASCII();
+    }
   }
 
   /**
@@ -183,86 +221,12 @@ public class PointArchiverInfluxDb extends PointArchiver {
    * @param end   Most recent time in the range of interest.
    * @return Vector containing all data for the point over the time range.
    */
-  public Vector<PointData> extract(PointDescription pm, AbsTime start, AbsTime end) {
-    try {
-      if (!isConnected()) {
-        System.out.println(databaseName + " is not connected...");
-        return null;
-      }
-      // Build and execute the query, selecting all data for name of point description object
-      String cmd = "select * from " + pm.getName().toString()
-              + " where time >=" + start.getValue()
-              + " and time <=" + end.getValue();
-      QueryResult qout;
-      synchronized (influxDB) {
-        Query query = new Query(cmd, databaseName);
-        qout = influxDB.query(query);
-        qout.getResults();
-      }
-      // Ensure we recieved data
-      if (qout.getResults().isEmpty()) {
-        System.out.println("Query returns null");
-        return null;
-      }
-      // Finished querying
-      Vector<PointData> res = new Vector<PointData>(1000, 8000);
-      //construct pointData object from query result object
-      PointData qres = new PointData("Query", qout);
-      //add qres pointdata elements to res pointdata vector
-      for (int i = 0; res.size() <= i; ) {
-        res.add(qres);
-        i++;
-      }
-      //return query as pointdata vector
-      return res;
-    } catch (Exception e) {
-      e.printStackTrace();
-      return null;
-    }
-  }
-
-  /**
-   * Extract data from the archive with no undersampling.
-   *
-   * @param pm    Point to extract data for.
-   * @param start Earliest time in the range of interest.
-   * @param end   Most recent time in the range of interest.
-   * @return Vector containing all data for the point over the time range.
-   */
   protected Vector<PointData> extractDeep(PointDescription pm, AbsTime start, AbsTime end) {
-    try {
-      if (!isConnected()) {
-        System.out.println(databaseName + " is not connected...");
-        return null;
-      }
-      // Build and execute the query, selecting all data for name of point description object
-      String cmd = "select * from " + pm.getName().toString()
-              + " where time >=" + start.getValue()
-              + " and time <=" + end.getValue();
-      Query query = new Query(cmd, databaseName);
-      QueryResult qout = influxDB.query(query);
-      qout.getResults();
-      // Ensure we recieved data
-      if (qout.getResults().isEmpty()) {
-        System.out.println("Query returns null");
-        return null;
-      }
-      // Finished querying
-      Vector<PointData> res = new Vector<PointData>(1000, 8000);
-      //construct pointData object from query result object
-      PointData qres = new PointData("Query", qout);
-      //add qres pointdata elements to res pointdata vector
-      for (int i = 0; res.size() <= i; ) {
-        res.add(qres);
-        i++;
-      }
-      //return query as pointdata vector
-      return res;
-    } catch (Exception e) {
-      e.printStackTrace();
+    if (itsChainedArchiver == null) {
       return null;
     }
-  }
+    return itsChainedArchiver.extractDeep(pm, start, end);
+  };
 
   /**
    * Method to do the actual archiving.
@@ -318,8 +282,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
       try {
         if (itsMetadataBatch == null) {
           itsMetadataBatch = BatchPoints
-                  .database(databaseName + "_metadata")
-                  .retentionPolicy(retentionPolicy)
+                  .database(theirDatabaseName + "_metadata")
+                  .retentionPolicy(theirRetentionPolicy)
                   .consistency(InfluxDB.ConsistencyLevel.ALL)
                   .build();
         }
@@ -343,8 +307,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
 
     if (itsCurrentBatch == null) {
       itsCurrentBatch = BatchPoints
-              .database(databaseName)
-              .retentionPolicy(retentionPolicy)
+              .database(theirDatabaseName)
+              .retentionPolicy(theirRetentionPolicy)
               .consistency(InfluxDB.ConsistencyLevel.ALL)
               .build();
       itsBatchStart = Instant.now().toEpochMilli();
@@ -403,7 +367,17 @@ public class PointArchiverInfluxDb extends PointArchiver {
         e.printStackTrace();
       }
     }
-    pd.clear();
+    if (itsChainedArchiver != null) {
+      /// TODO may end up archiving via Influx twice as disk
+      /// may not clear it
+      if (!itsChainedArchiver.itsBeingArchived.contains(pm.getFullName())) {
+        itsChainedArchiver.itsBeingArchived.add(pm.getFullName());
+        itsChainedArchiver.saveNow(pm, pd);
+      }
+    }
+    else {
+      pd.clear();
+    }
     synchronized (itsBeingArchived) {
       itsBeingArchived.remove(pm.getFullName());
     }
@@ -451,28 +425,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
    * @return PointData for preceding update or null if none found.
    */
   protected PointData getPrecedingDeep(PointDescription pm, AbsTime ts) {
-    try {
-      if (!isConnected()) {
-        System.out.println(databaseName + " is not connected...");
-        return null;
-      }
-      // Build and execute the query, selecting all data for name of point description object
-      String cmd = "select * from " + pm.getName().toString()
-              + " where time <=" + ts.getValue();
-      Query query = new Query(cmd, databaseName);
-      QueryResult qout = influxDB.query(query);
-      qout.getResults();
-      // Ensure we recieved data
-      if (qout.getResults().isEmpty()) {
-        System.out.println("Query returns null");
-        return null;
-      }
-      //return the extracted data
-      return new PointData("Query", qout);
-    } catch (Exception e) {
-      e.printStackTrace();
+    if (itsChainedArchiver == null) {
       return null;
     }
+    return itsChainedArchiver.getPrecedingDeep(pm, ts);
   }
 
   /**
@@ -483,28 +439,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
    * @return PointData for following update or null if none found.
    */
   protected PointData getFollowingDeep(PointDescription pm, AbsTime ts) {
-    try {
-      if (!isConnected()) {
-        System.out.println(databaseName + " is not connected...");
-        return null;
-      }
-      // Build and execute the query, selecting all data for name of point description object
-      String cmd = "select * from " + pm.getName().toString()
-              + " where time >=" + ts.getValue();
-      Query query = new Query(cmd, databaseName);
-      QueryResult qout = influxDB.query(query);
-      qout.getResults();
-      // Ensure we recieved data
-      if (qout.getResults().isEmpty()) {
-        System.out.println("Query returns null");
-        return null;
-      }
-      //return the extracted data
-      return new PointData("Query", qout);
-    } catch (Exception e) {
-      e.printStackTrace();
+    if (itsChainedArchiver == null) {
       return null;
     }
+    return itsChainedArchiver.getFollowingDeep(pm, ts);
   }
 
   /**
@@ -513,22 +451,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
    * @param pd The point whos data we wish to purge.
    */
   protected void purgeOldData(PointDescription pd) {
-    if (pd.getArchiveLongevity() <= 0) {
-      System.out.println("Conflict with point archive policy");
+    if (itsChainedArchiver == null) {
       return;
     }
-    // Check server connection
-    if (!isConnected()) {
-      return;
-    }
-    try {
-      // Build and execute the query, selecting all data for name of point description object
-      String cmd = "delete * from " + pd.getName().toString();
-      Query query = new Query(cmd, databaseName);
-      influxDB.query(query);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    itsChainedArchiver.purgeOldData(pd);
   }
 }
 
