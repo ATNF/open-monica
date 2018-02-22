@@ -165,7 +165,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
         try {
             setUp();
-            runThread.start();
+            influxThread.start();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -246,10 +246,15 @@ public class PointArchiverInfluxDb extends PointArchiver {
 
     /**
      * Main loop for the archiving thread. Override from Archiver class
-     * due to need to archiving in realtime.
+     * due to need for archiving to InfluxDB in realtime.
      */
     public void run() {
         setName("Point Archiver");
+
+        if (itsChainedArchiver != null) {
+            itsLogger.info("starting chained archiver");
+            itsChainedArchiver.start();
+        }
 
         RelTime sleeptime1 = RelTime.factory(50000);
         RelTime sleeptime2 = RelTime.factory(1000);
@@ -332,6 +337,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             } catch (Exception e) {
             }
         }
+        itsLogger.info("shutting down archiver");
     }
 
     /**
@@ -466,15 +472,19 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
     }
 
-    Thread runThread = new Thread(new Runnable() {
+    Thread influxThread = new Thread(new Runnable() {
         @Override
         public void run() {
             long rateStart = Instant.now().toEpochMilli();
             long pointsPerMinute = 0;
             long rateElapsed = 0;
-            while (!itsShuttingDown) {
+            while (true) {
                 try {
                     BatchPoints batchPoints = itsBatchQueue.take();
+                    if (itsShuttingDown) {
+                        itsLogger.info("shutting down influx thread");
+                        break;
+                    }
                     long startTime = System.nanoTime();
                     influxDB.write(batchPoints);
                     long elapsed = (System.nanoTime() - startTime) / 1000000;
@@ -499,6 +509,29 @@ public class PointArchiverInfluxDb extends PointArchiver {
             influxDB = null;
         }
     });
+
+    /**
+     * Tell the archiver that MoniCA needs to shut down so that unflushed data can be written out.
+     */
+    public void flushArchive() {
+        itsLogger.info("Flushing archiver");
+        itsShuttingDown = true;
+        BatchPoints terminate = BatchPoints
+                .database("terminate")
+                .retentionPolicy(theirRetentionPolicy)
+                .consistency(InfluxDB.ConsistencyLevel.ALL)
+                .build();
+        itsBatchQueue.add(terminate);
+        if (itsChainedArchiver != null) {
+            itsChainedArchiver.flushArchive();
+        }
+        while (!itsFlushComplete) {
+            try {
+                RelTime.factory(100000).sleep();
+            } catch (Exception e) {
+            }
+        }
+    }
 
     /**
      * Return the last update which precedes the specified time. We interpret 'precedes' to mean data_time<=req_time.
