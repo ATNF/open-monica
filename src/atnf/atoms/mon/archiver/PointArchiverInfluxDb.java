@@ -12,7 +12,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
 import org.influxdb.InfluxDB;
@@ -90,7 +90,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Queue of batch updates to send to InfluxDB server
      */
-    private BlockingQueue<BatchPoints> itsBatchQueue = new LinkedBlockingQueue<BatchPoints>();
+    private LinkedBlockingDeque<BatchPoints> itsBatchQueue = new LinkedBlockingDeque<BatchPoints>(1000);
 
     /**
      * The current batch being created
@@ -129,7 +129,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * The connection to the InfluxDB server.
      */
-    private InfluxDB influxDB = null;
+    private InfluxDB itsInfluxDB = null;
 
 
     /** Static block to parse flush parameters. */
@@ -158,13 +158,18 @@ public class PointArchiverInfluxDb extends PointArchiver {
 
     public PointArchiverInfluxDb() {
         super();
+
+        // load tags
+        itsLogger.info("loading InfluxDB mappings from " + theirTagFilePath);
+        final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
+        tags = new LinkedHashMap<String, TagExtractor>();
+        tagProperties.getProperties().forEach((k, v) -> tags.put(k, TagExtractor.fromString(v)));
+
         // chain the ASCII archiver
         if (theirChainToASCII) {
-            itsLogger.info("chaining to ASCII archiver");
             itsChainedArchiver = new PointArchiverASCII();
         }
         try {
-            setUp();
             influxThread.start();
         } catch (Exception e) {
             e.printStackTrace();
@@ -177,35 +182,48 @@ public class PointArchiverInfluxDb extends PointArchiver {
      * @throws InterruptedException
      * @throws IOException
      */
-    private void setUp() throws InterruptedException, IOException {
-        this.influxDB = InfluxDBFactory.connect(theirURL, theirUsername, theirPassword);
-        boolean influxDBstarted = false;
-        do {
-            Pong response;
-            try {
-                response = this.influxDB.ping();
+    private Boolean setUp() throws InterruptedException, IOException {
+        try {
+            itsInfluxDB = InfluxDBFactory.connect(theirURL, theirUsername, theirPassword);
+            boolean influxDBstarted = false;
+            do {
+                Pong response;
+                response = itsInfluxDB.ping();
                 if (!response.getVersion().equalsIgnoreCase("unknown")) {
                     influxDBstarted = true;
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
+                Thread.sleep(100L);
+            } while (!influxDBstarted);
+            itsInfluxDB.setLogLevel(LogLevel.NONE);
+            itsLogger.info("Connected to " + theirURL + " InfluxDB Version: " + this.itsInfluxDB.version());
+            if (isConnected()) {
+                // check for database
+                if (!itsInfluxDB.describeDatabases().contains(theirDatabaseName)) {
+                    itsLogger.warn("Influx database " + theirDatabaseName + " not found");
+                    shutdown();
+                    return false;
+                }
+                if (!itsInfluxDB.describeDatabases().contains(theirDatabaseName + "_metadata")) {
+                    itsLogger.warn("Influx database " + theirDatabaseName + "_metadata not found");
+                    shutdown();
+                    return false;
+                }
             }
-            Thread.sleep(100L);
-        } while (!influxDBstarted);
-        this.influxDB.setLogLevel(LogLevel.NONE);
-        itsLogger.info("Connected to InfluxDB Version: " + this.influxDB.version());
+            return true;
+        }
+        catch (Exception e) {
+            itsLogger.warn("Can't connect to Influx server " + theirURL);
+            itsInfluxDB = null;
+        }
+        return false;
+    }
 
-        // load tags
-        final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
-        tags = new LinkedHashMap<String, TagExtractor>();
-        tagProperties.getProperties().forEach((k, v) -> tags.put(k, TagExtractor.fromString(v)));
-
-        // create databases
-        influxDB.createDatabase(theirDatabaseName);
-
-        // we create the metadata from scratch each time
-        influxDB.deleteDatabase(theirDatabaseName + "_metadata");
-        influxDB.createDatabase(theirDatabaseName + "_metadata");
+    private void shutdown() {
+        itsLogger.info("closing influxdb connection");
+        if (isConnected()) {
+            itsInfluxDB.close();
+            itsInfluxDB = null;
+        }
     }
 
     /**
@@ -214,7 +232,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
      * @return True if connected (or reconnected). False if not connected.
      */
     protected boolean isConnected() {
-        return influxDB != null;
+        return itsInfluxDB != null;
     }
 
     /**
@@ -223,10 +241,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
      * @print The version and response time of the influxDB object's database
      */
     protected void Ping() {
-        Pong result = this.influxDB.ping();
+        Pong result = this.itsInfluxDB.ping();
         String version = result.getVersion();
         System.out.println("Version: " + version + " | Response: " + result + "ms");
-        System.out.println(influxDB.describeDatabases());
+        System.out.println(itsInfluxDB.describeDatabases());
     }
 
     /**
@@ -252,7 +270,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         setName("Point Archiver");
 
         if (itsChainedArchiver != null) {
-            itsLogger.info("starting chained archiver");
+            itsLogger.info("starting chained ASCII archiver");
             itsChainedArchiver.start();
         }
 
@@ -393,7 +411,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 itsMetadataBatch.point(metadata);
                 if (itsMetadataBatch.getPoints().size() >= theirInfluxBatchSize) {
                     itsLogger.debug("adding metadata");
-                    itsBatchQueue.add(itsMetadataBatch);
+                    itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
             } catch (Exception e) {
@@ -458,15 +476,16 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 || batchAge > theirInfluxBatchAge) {
             try {
                 if (itsMetadataBatch != null) {
-                    itsLogger.debug("adding last metadata " + itsMetadataBatch.getPoints().size());
-                    itsBatchQueue.add(itsMetadataBatch);
+                    // add any remaining metadata before we archive any points
+                    itsLogger.debug("adding metadata " + itsMetadataBatch.getPoints().size());
+                    itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
                 itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " points age " + elapsedPoint + "ms");
-                itsBatchQueue.put(itsCurrentBatch);
+                itsBatchQueue.addLast(itsCurrentBatch);
                 itsCurrentBatch = null;
                 itsOldestPointTime = 0;
-            } catch (InterruptedException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -478,15 +497,34 @@ public class PointArchiverInfluxDb extends PointArchiver {
             long rateStart = Instant.now().toEpochMilli();
             long pointsPerMinute = 0;
             long rateElapsed = 0;
+
             while (true) {
                 try {
-                    BatchPoints batchPoints = itsBatchQueue.take();
+                    // connect / reconnect to Influx Server
+                    if (!isConnected() && !setUp()) {
+                        itsLogger.warn("not connected to influx, " + itsBatchQueue.size() + " batches waiting");
+                        sleep(60000);
+                        continue;
+                    }
+                    BatchPoints batchPoints = itsBatchQueue.takeFirst();
                     if (itsShuttingDown) {
                         itsLogger.info("shutting down influx thread");
                         break;
                     }
                     long startTime = System.nanoTime();
-                    influxDB.write(batchPoints);
+                    try {
+                        itsInfluxDB.write(batchPoints);
+                    } catch (Exception e) {
+                        itsLogger.warn("write to influx failed, try to reconnect");
+                        shutdown();
+                        // put the points back in the queue
+                        if  (itsBatchQueue.size() < 1000) {
+                            itsBatchQueue.addFirst(batchPoints);
+                        }
+                        else {
+                            itsLogger.warn("queue full, dropping batch");
+                        }
+                    }
                     long elapsed = (System.nanoTime() - startTime) / 1000000;
                     long elapsedPoint = Instant.now().toEpochMilli() - itsOldestPointTime;
                     itsLogger.debug("sent " + batchPoints.getPoints().size()
@@ -504,9 +542,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 }
 
             }
-            itsLogger.info("closing influxdb connection");
-            influxDB.close();
-            influxDB = null;
+            shutdown();
         }
     });
 
@@ -521,7 +557,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 .retentionPolicy(theirRetentionPolicy)
                 .consistency(InfluxDB.ConsistencyLevel.ALL)
                 .build();
-        itsBatchQueue.add(terminate);
+        itsBatchQueue.addLast(terminate);
         if (itsChainedArchiver != null) {
             itsChainedArchiver.flushArchive();
         }
