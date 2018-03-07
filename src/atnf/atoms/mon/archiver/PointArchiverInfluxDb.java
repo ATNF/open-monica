@@ -1,3 +1,10 @@
+// Copyright (C) CSIRO Australia Telescope National Facility
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Library General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+
 package atnf.atoms.mon.archiver;
 
 import atnf.atoms.mon.PointData;
@@ -5,11 +12,10 @@ import atnf.atoms.mon.PointDescription;
 import atnf.atoms.mon.util.MonitorConfig;
 import atnf.atoms.time.AbsTime;
 import atnf.atoms.time.RelTime;
-import au.csiro.pbdava.diamonica.etl.influx.TagExtractor;
-import au.csiro.pbdava.diamonica.etl.influx.OrderedProperties;
+import atnf.atoms.mon.archiver.influx.TagExtractor;
+import atnf.atoms.mon.archiver.influx.OrderedProperties;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -124,7 +130,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         AbsTime lastTimestamp = AbsTime.NEVER;
     }
 
-    Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<>();
+    Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<PointDescription, InfluxSeries>();
 
     /**
      * The connection to the InfluxDB server.
@@ -163,7 +169,11 @@ public class PointArchiverInfluxDb extends PointArchiver {
         itsLogger.info("loading InfluxDB mappings from " + theirTagFilePath);
         final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
         tags = new LinkedHashMap<String, TagExtractor>();
-        tagProperties.getProperties().forEach((k, v) -> tags.put(k, TagExtractor.fromString(v)));
+        Iterator iter = tagProperties.getProperties().entrySet().iterator();
+        while (iter.hasNext()) {
+            Map.Entry pair = (Map.Entry) iter.next();
+            tags.put((String)pair.getKey(), TagExtractor.fromString((String)pair.getValue()));
+        }
 
         // chain the ASCII archiver
         if (theirChainToASCII) {
@@ -376,7 +386,16 @@ public class PointArchiverInfluxDb extends PointArchiver {
             String pointName = pm.getSource() + "." + pm.getName();
             seriesInfo.tags = new HashMap<String, String>();
             final TagExtractor.Holder nameHolder = new TagExtractor.Holder(pointName);
-            tags.forEach((n, te) -> te.apply(nameHolder).ifPresent(v -> seriesInfo.tags.put(n, v)));
+            Iterator iter = tags.entrySet().iterator();
+            while (iter.hasNext()) {
+                Map.Entry pair = (Map.Entry)iter.next();
+                String key = (String)pair.getKey();
+                TagExtractor te = (TagExtractor)pair.getValue();
+                String result = te.apply(nameHolder);
+                if ( result != null) {
+                    seriesInfo.tags.put(key, result);
+                }
+            }
 
             // add unit as a tag
             String pointUnits = pm.getUnits();
@@ -400,7 +419,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                             .consistency(InfluxDB.ConsistencyLevel.ALL)
                             .build();
                 }
-                HashMap<String, String> metadataTags = new HashMap<>(seriesInfo.tags);
+                HashMap<String, String> metadataTags = new HashMap<String, String>(seriesInfo.tags);
                 metadataTags.remove("antenna");
                 String fieldValue = pm.getLongDesc() + "," + pm.getUnits() + "," + pm.getInputTransactionString();
                 Point metadata = Point.measurement(seriesInfo.measurement)
@@ -425,7 +444,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     .retentionPolicy(theirRetentionPolicy)
                     .consistency(InfluxDB.ConsistencyLevel.ALL)
                     .build();
-            itsBatchStart = Instant.now().toEpochMilli();
+            itsBatchStart = System.nanoTime();
         }
 
         Long pointTime;
@@ -470,8 +489,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
         seriesInfo.lastTimestamp = pd.lastElement().getTimestamp();
 
-        long elapsedPoint = Instant.now().toEpochMilli() - itsOldestPointTime;
-        long batchAge = Instant.now().toEpochMilli() - itsBatchStart;
+        long elapsedPoint = System.currentTimeMillis() - itsOldestPointTime;
+        long batchAge = (System.nanoTime() - itsBatchStart) / 1000000;
         if (itsCurrentBatch.getPoints().size() >= theirInfluxBatchSize
                 || batchAge > theirInfluxBatchAge) {
             try {
@@ -481,7 +500,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
-                itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " points age " + elapsedPoint + "ms");
+                itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " points age " + elapsedPoint + "ms");
                 itsBatchQueue.addLast(itsCurrentBatch);
                 itsCurrentBatch = null;
                 itsOldestPointTime = 0;
@@ -494,7 +513,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
     Thread influxThread = new Thread(new Runnable() {
         @Override
         public void run() {
-            long rateStart = Instant.now().toEpochMilli();
+            long rateStart = System.nanoTime();
             long pointsPerMinute = 0;
             long rateElapsed = 0;
 
@@ -526,15 +545,15 @@ public class PointArchiverInfluxDb extends PointArchiver {
                         }
                     }
                     long elapsed = (System.nanoTime() - startTime) / 1000000;
-                    long elapsedPoint = Instant.now().toEpochMilli() - itsOldestPointTime;
+                    long elapsedPoint = System.currentTimeMillis() - itsOldestPointTime;
                     itsLogger.debug("sent " + batchPoints.getPoints().size()
                             + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
-                    rateElapsed = Instant.now().toEpochMilli() - rateStart;
+                    rateElapsed = (System.nanoTime() - rateStart) / 1000000;
                     pointsPerMinute += batchPoints.getPoints().size();
                     if (rateElapsed >= 60000) {
                         double rate = 1.0 * pointsPerMinute / 60;
                         itsLogger.info(String.format("ingest rate %.1f points per second", rate));
-                        rateStart = Instant.now().toEpochMilli();
+                        rateStart = System.nanoTime();
                         pointsPerMinute = 0;
                     }
                 } catch (Exception e) {
