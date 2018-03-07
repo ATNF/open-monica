@@ -4,26 +4,21 @@
 // modify it under the terms of the GNU Library General Public License
 // as published by the Free Software Foundation; either version 2
 // of the License, or (at your option) any later version.
-
 package atnf.atoms.mon.archiver.influx;
 
-/**
- * Created by has09e on 21/07/17.
- */
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.LineIterator;
+
 import java.io.File;
 import java.io.IOException;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.LineIterator;
-
 public class OrderedProperties {
 
-    private static Map<String, String> properties = new LinkedHashMap<String, String>();
+    private final static Map<String, String> properties = new LinkedHashMap<String, String>();
 
     private static OrderedProperties instance = null;
 
@@ -32,6 +27,7 @@ public class OrderedProperties {
     }
 
     //The propertyFileName is read from the classpath and should be of format : key=value
+    @SuppressWarnings("SameParameterValue")
     public static synchronized OrderedProperties getInstance(String propertyFileName) {
         if (instance == null) {
             instance = new OrderedProperties();
@@ -65,7 +61,9 @@ public class OrderedProperties {
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            lineIterator.close();
+            if (lineIterator != null) {
+                lineIterator.close();
+            }
         }
     }
 
@@ -73,6 +71,7 @@ public class OrderedProperties {
         return OrderedProperties.properties;
     }
 
+    @SuppressWarnings("unused")
     public String getProperty(String key) {
         return OrderedProperties.properties.get(key);
     }

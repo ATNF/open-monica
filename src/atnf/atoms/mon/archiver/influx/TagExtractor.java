@@ -10,6 +10,7 @@ public class TagExtractor {
 	public static class Holder {
 		private String s;
 
+		@SuppressWarnings("unused")
 		public Holder(String s) {
 			super();
 			this.s = s;
@@ -29,17 +30,20 @@ public class TagExtractor {
 	private final Pattern tvPattern;
 	private final String tvReplace;
 
-	public TagExtractor(String pattern, String replace, String tagValuePattern, String tagValueReplace) {
+	@SuppressWarnings("unused")
+	private TagExtractor(String pattern, String replace, String tagValuePattern, String tagValueReplace) {
 		this.pattern = Pattern.compile(REGEX_DOT_OR_START + "(" + pattern + ")" + REGEX_DOT_OR_END);
 		this.replace = replace;
 		this.tvPattern = Pattern.compile(tagValuePattern);
 		this.tvReplace = tagValueReplace;
 	}
 
-	public TagExtractor(String pattern) { this(pattern, "", "", "");
+	@SuppressWarnings("unused")
+	private TagExtractor(String pattern) { this(pattern, "", "", "");
 	}
 
-	public TagExtractor(String pattern, String replace) { this(pattern, replace, "", "");
+	@SuppressWarnings("unused")
+	private TagExtractor(String pattern, String replace) { this(pattern, replace, "", "");
 	}
 
 	public String  apply(Holder name) {

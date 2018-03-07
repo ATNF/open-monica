@@ -9,23 +9,22 @@ package atnf.atoms.mon.archiver;
 
 import atnf.atoms.mon.PointData;
 import atnf.atoms.mon.PointDescription;
+import atnf.atoms.mon.archiver.influx.OrderedProperties;
+import atnf.atoms.mon.archiver.influx.TagExtractor;
 import atnf.atoms.mon.util.MonitorConfig;
 import atnf.atoms.time.AbsTime;
 import atnf.atoms.time.RelTime;
-import atnf.atoms.mon.archiver.influx.TagExtractor;
-import atnf.atoms.mon.archiver.influx.OrderedProperties;
+import org.apache.log4j.Logger;
+import org.influxdb.InfluxDB;
+import org.influxdb.InfluxDB.LogLevel;
+import org.influxdb.InfluxDBFactory;
+import org.influxdb.dto.BatchPoints;
+import org.influxdb.dto.Point;
+import org.influxdb.dto.Pong;
 
-import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
-
-import org.influxdb.InfluxDB;
-import org.influxdb.InfluxDBFactory;
-import org.influxdb.dto.*;
-import org.influxdb.InfluxDB.LogLevel;
-import org.apache.log4j.Logger;
 
 /**
  * #%L
@@ -45,48 +44,50 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * InfluxDB database name
      */
-    private static String theirDatabaseName = MonitorConfig.getProperty("InfluxDB", "testing");
+    private final static String theirDatabaseName = MonitorConfig.getProperty("InfluxDB", "testing");
 
     /**
      * Global retention policy
      */
-    private static String theirRetentionPolicy = MonitorConfig.getProperty("InfluxRetensionPolicy", "autogen");
+    private final static String theirRetentionPolicy = MonitorConfig.getProperty("InfluxRetentionPolicy", "autogen");
 
     /**
      * The URL to connect to the server/database.
      */
-    private static String theirURL = MonitorConfig.getProperty("InfluxURL", "http://localhost:8086");
+    private final static String theirURL = MonitorConfig.getProperty("InfluxURL", "http://localhost:8086");
 
     /**
      * Influx username
      */
-    private static String theirUsername = MonitorConfig.getProperty("InfluxUsername", "admin");
+    private final static String theirUsername = MonitorConfig.getProperty("InfluxUsername", "admin");
 
     /**
      * Influx password
      */
-    private static String theirPassword = MonitorConfig.getProperty("InfluxPassword", "admin");
+    private final static String theirPassword = MonitorConfig.getProperty("InfluxPassword", "admin");
 
     /**
      * Tag file location
      */
-    private static String theirTagFilePath = MonitorConfig.getProperty("InfluxTagMap", "");
+    private final static String theirTagFilePath = MonitorConfig.getProperty("InfluxTagMap", "");
 
     /**
      * Maximum size of batch update (number of samples)
      */
+    @SuppressWarnings("CanBeFinal")
     private static long theirInfluxBatchSize = 10000;
 
     /**
      * Maximum age of batch before flushing (in milliseconds)
      */
+    @SuppressWarnings("CanBeFinal")
     private static long theirInfluxBatchAge = 10000;
 
     /**
      * Toggle for ASCII archiver
      */
+    @SuppressWarnings("CanBeFinal")
     private static Boolean theirChainToASCII = false;
-
 
     /**
      * Tag Extractor for generating Influxdb Tags
@@ -96,7 +97,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Queue of batch updates to send to InfluxDB server
      */
-    private LinkedBlockingDeque<BatchPoints> itsBatchQueue = new LinkedBlockingDeque<BatchPoints>(1000);
+    private final LinkedBlockingDeque<BatchPoints> itsBatchQueue = new LinkedBlockingDeque<BatchPoints>(1000);
 
     /**
      * The current batch being created
@@ -130,7 +131,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         AbsTime lastTimestamp = AbsTime.NEVER;
     }
 
-    Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<PointDescription, InfluxSeries>();
+    private final Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<PointDescription, InfluxSeries>();
 
     /**
      * The connection to the InfluxDB server.
@@ -138,30 +139,28 @@ public class PointArchiverInfluxDb extends PointArchiver {
     private InfluxDB itsInfluxDB = null;
 
 
-    /** Static block to parse flush parameters. */
+    /* Static block to parse parameters. */
     static {
         try {
-            long param = Integer.parseInt(MonitorConfig.getProperty("InfluxBatchSize", "1000"));
-            theirInfluxBatchSize = param;
+            theirInfluxBatchSize = Integer.parseInt(MonitorConfig.getProperty("InfluxBatchSize", "1000"));
         } catch (Exception e) {
             Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchSize configuration parameter: " + e);
         }
 
         try {
-            long param = 1000 * Integer.parseInt(MonitorConfig.getProperty("InfluxBatchAge", "1"));
-            theirInfluxBatchAge = param;
+            theirInfluxBatchAge = 1000 * Integer.parseInt(MonitorConfig.getProperty("InfluxBatchAge", "1"));
         } catch (Exception e) {
             Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxBatchAge configuration parameter: " + e);
         }
 
         try {
-            Boolean param = Boolean.parseBoolean(MonitorConfig.getProperty("InfluxChainToASCII", "false"));
-            theirChainToASCII = param;
+            theirChainToASCII = Boolean.parseBoolean(MonitorConfig.getProperty("InfluxChainToASCII", "false"));
         } catch (Exception e) {
             Logger.getLogger(PointArchiver.class.getName()).warn("Error parsing InfluxChainToASCII : " + e);
         }
     }
 
+    @SuppressWarnings("unused")
     public PointArchiverInfluxDb() {
         super();
 
@@ -169,10 +168,9 @@ public class PointArchiverInfluxDb extends PointArchiver {
         itsLogger.info("loading InfluxDB mappings from " + theirTagFilePath);
         final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
         tags = new LinkedHashMap<String, TagExtractor>();
-        Iterator iter = tagProperties.getProperties().entrySet().iterator();
-        while (iter.hasNext()) {
-            Map.Entry pair = (Map.Entry) iter.next();
-            tags.put((String)pair.getKey(), TagExtractor.fromString((String)pair.getValue()));
+        for (Object o : tagProperties.getProperties().entrySet()) {
+            Map.Entry pair = (Map.Entry) o;
+            tags.put((String) pair.getKey(), TagExtractor.fromString((String) pair.getValue()));
         }
 
         // chain the ASCII archiver
@@ -189,10 +187,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Create a influxDB connection
      *
-     * @throws InterruptedException
-     * @throws IOException
      */
-    private Boolean setUp() throws InterruptedException, IOException {
+    private Boolean setUp() {
         try {
             itsInfluxDB = InfluxDBFactory.connect(theirURL, theirUsername, theirPassword);
             boolean influxDBstarted = false;
@@ -241,15 +237,16 @@ public class PointArchiverInfluxDb extends PointArchiver {
      *
      * @return True if connected (or reconnected). False if not connected.
      */
-    protected boolean isConnected() {
+    private boolean isConnected() {
         return itsInfluxDB != null;
     }
 
     /**
      * Ping influxdb
      *
-     * @print The version and response time of the influxDB object's database
+     * print the version and response time of the influxDB object's database
      */
+    @SuppressWarnings("unused")
     protected void Ping() {
         Pong result = this.itsInfluxDB.ping();
         String version = result.getVersion();
@@ -297,17 +294,18 @@ public class PointArchiverInfluxDb extends PointArchiver {
             Enumeration<PointDescription> keys = itsBuffer.keys();
             try {
                 while (keys.hasMoreElements()) {
-                    Vector<PointData> thisdata = null;
                     PointDescription pm = keys.nextElement();
                     if (pm == null) {
                         continue;
                     }
-                    thisdata = itsBuffer.get(pm);
+
+                    Vector<PointData> thisdata = itsBuffer.get(pm);
                     if (thisdata == null || thisdata.isEmpty()) {
                         // No data to be archived
                         continue;
                     }
 
+                    //noinspection StatementWithEmptyBody
                     if (!itsShuttingDown) {
                         // Add small offsets based on hash of point name.
                         // This prevents bulk points all being flushed together each time.
@@ -329,7 +327,9 @@ public class PointArchiverInfluxDb extends PointArchiver {
                         thisdata.clear();
                     } else {
                         HashSet<String> archivingStatus = itsChainedArchiver.itsBeingArchived;
-                        synchronized (archivingStatus) {
+                        // TODO need to fix in PointArchiver
+                        // noinspection SynchronizeOnNonFinalField
+                        synchronized (itsChainedArchiver.itsBeingArchived) {
                             if (archivingStatus.contains(pm.getFullName())) {
                                 // Point is already being archived
                                 //itsLogger.warn(pm.getFullName() + " is already being archived");
@@ -345,6 +345,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     try {
                         sleeptime2.sleep();
                     } catch (Exception e) {
+                        itsLogger.warn("exception caught: " + e);
                     }
                     counter++;
                 }
@@ -363,6 +364,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             try {
                 sleeptime1.sleep();
             } catch (Exception e) {
+                itsLogger.warn("exception caught: " + e);
             }
         }
         itsLogger.info("shutting down archiver");
@@ -378,7 +380,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
         if (itsShuttingDown) {
             return;
         }
-        long startTime = System.nanoTime();
 
         if (!itsInfluxMap.containsKey(pm)) {
             // map the MoniCA key to the Influx series name
@@ -386,13 +387,12 @@ public class PointArchiverInfluxDb extends PointArchiver {
             String pointName = pm.getSource() + "." + pm.getName();
             seriesInfo.tags = new HashMap<String, String>();
             final TagExtractor.Holder nameHolder = new TagExtractor.Holder(pointName);
-            Iterator iter = tags.entrySet().iterator();
-            while (iter.hasNext()) {
-                Map.Entry pair = (Map.Entry)iter.next();
-                String key = (String)pair.getKey();
-                TagExtractor te = (TagExtractor)pair.getValue();
+            for (Object o : tags.entrySet()) {
+                Map.Entry pair = (Map.Entry) o;
+                String key = (String) pair.getKey();
+                TagExtractor te = (TagExtractor) pair.getValue();
                 String result = te.apply(nameHolder);
-                if ( result != null) {
+                if (result != null) {
                     seriesInfo.tags.put(key, result);
                 }
             }
@@ -453,6 +453,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsLogger.error("map not ready");
             return;
         }
+        // TODO foreach leads to comodification error
+        //noinspection ForLoopReplaceableByForEach
         for (int i = 0; i < pd.size(); i++) {
             try { //extract point data and metadata to write to influx
                 PointData pointData = pd.get(i);
@@ -464,25 +466,28 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 }
 
                 // pointTime in a BAT time so convert to epoch for Influx
-                pointTime = pointData.getTimestamp().getAsDate().getTime();
-                if (pointTime < itsOldestPointTime || itsOldestPointTime == 0) {
-                    itsOldestPointTime = pointTime;
-                }
-                Point.Builder pb = Point.measurement(seriesInfo.measurement)
-                        .time(pointTime, TimeUnit.MILLISECONDS)
-                        .tag(seriesInfo.tags);
+                Date pointDate = pointData.getTimestamp().getAsDate();
+                if (pointDate != null) {
+                    pointTime = pointDate.getTime();
+                    if (pointTime < itsOldestPointTime || itsOldestPointTime == 0) {
+                        itsOldestPointTime = pointTime;
+                    }
+                    Point.Builder pb = Point.measurement(seriesInfo.measurement)
+                            .time(pointTime, TimeUnit.MILLISECONDS)
+                            .tag(seriesInfo.tags);
 
-                Object pointValueObj = pointData.getData();
-                if (pointData.getData() instanceof Double) {
-                    pb.addField(seriesInfo.field, ((Number) pointValueObj).doubleValue());
-                } else if (pointData.getData() instanceof Float) {
-                    pb.addField(seriesInfo.field, ((Number) pointValueObj).floatValue());
-                } else if (pointData.getData() instanceof Integer) {
-                    pb.addField(seriesInfo.field, ((Number) pointValueObj).intValue());
-                } else if (pointValueObj instanceof String) {
-                    pb.addField(seriesInfo.field, (String) pointValueObj);
+                    Object pointValueObj = pointData.getData();
+                    if (pointData.getData() instanceof Double) {
+                        pb.addField(seriesInfo.field, ((Number) pointValueObj).doubleValue());
+                    } else if (pointData.getData() instanceof Float) {
+                        pb.addField(seriesInfo.field, ((Number) pointValueObj).floatValue());
+                    } else if (pointData.getData() instanceof Integer) {
+                        pb.addField(seriesInfo.field, ((Number) pointValueObj).intValue());
+                    } else if (pointValueObj instanceof String) {
+                        pb.addField(seriesInfo.field, (String) pointValueObj);
+                    }
+                    itsCurrentBatch.point(pb.build());
                 }
-                itsCurrentBatch.point(pb.build());
             } catch (Exception a) {
                 a.printStackTrace();
             }
@@ -510,60 +515,62 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
     }
 
-    Thread influxThread = new Thread(new Runnable() {
-        @Override
-        public void run() {
-            long rateStart = System.nanoTime();
-            long pointsPerMinute = 0;
-            long rateElapsed = 0;
+    private final Thread influxThread;
 
-            while (true) {
-                try {
-                    // connect / reconnect to Influx Server
-                    if (!isConnected() && !setUp()) {
-                        itsLogger.warn("not connected to influx, " + itsBatchQueue.size() + " batches waiting");
-                        sleep(60000);
-                        continue;
-                    }
-                    BatchPoints batchPoints = itsBatchQueue.takeFirst();
-                    if (itsShuttingDown) {
-                        itsLogger.info("shutting down influx thread");
-                        break;
-                    }
-                    long startTime = System.nanoTime();
+    {
+        influxThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                long rateStart = System.nanoTime();
+                long pointsPerMinute = 0;
+                long rateElapsed;
+
+                while (true) {
                     try {
-                        itsInfluxDB.write(batchPoints);
+                        // connect / reconnect to Influx Server
+                        if (!isConnected() && !setUp()) {
+                            itsLogger.warn("not connected to influx, " + itsBatchQueue.size() + " batches waiting");
+                            sleep(60000);
+                            continue;
+                        }
+                        BatchPoints batchPoints = itsBatchQueue.takeFirst();
+                        if (itsShuttingDown) {
+                            itsLogger.info("shutting down influx thread");
+                            break;
+                        }
+                        long startTime = System.nanoTime();
+                        try {
+                            itsInfluxDB.write(batchPoints);
+                        } catch (Exception e) {
+                            itsLogger.warn("write to influx failed, try to reconnect");
+                            shutdown();
+                            // put the points back in the queue
+                            if (itsBatchQueue.size() < 1000) {
+                                itsBatchQueue.addFirst(batchPoints);
+                            } else {
+                                itsLogger.warn("queue full, dropping batch");
+                            }
+                        }
+                        long elapsed = (System.nanoTime() - startTime) / 1000000;
+                        itsLogger.debug("sent " + batchPoints.getPoints().size()
+                                + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
+                        rateElapsed = (System.nanoTime() - rateStart) / 1000000;
+                        pointsPerMinute += batchPoints.getPoints().size();
+                        if (rateElapsed >= 60000) {
+                            double rate = 1.0 * pointsPerMinute / 60;
+                            itsLogger.info(String.format("ingest rate %.1f points per second", rate));
+                            rateStart = System.nanoTime();
+                            pointsPerMinute = 0;
+                        }
                     } catch (Exception e) {
-                        itsLogger.warn("write to influx failed, try to reconnect");
-                        shutdown();
-                        // put the points back in the queue
-                        if  (itsBatchQueue.size() < 1000) {
-                            itsBatchQueue.addFirst(batchPoints);
-                        }
-                        else {
-                            itsLogger.warn("queue full, dropping batch");
-                        }
+                        e.printStackTrace();
                     }
-                    long elapsed = (System.nanoTime() - startTime) / 1000000;
-                    long elapsedPoint = System.currentTimeMillis() - itsOldestPointTime;
-                    itsLogger.debug("sent " + batchPoints.getPoints().size()
-                            + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
-                    rateElapsed = (System.nanoTime() - rateStart) / 1000000;
-                    pointsPerMinute += batchPoints.getPoints().size();
-                    if (rateElapsed >= 60000) {
-                        double rate = 1.0 * pointsPerMinute / 60;
-                        itsLogger.info(String.format("ingest rate %.1f points per second", rate));
-                        rateStart = System.nanoTime();
-                        pointsPerMinute = 0;
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
 
+                }
+                shutdown();
             }
-            shutdown();
-        }
-    });
+        });
+    }
 
     /**
      * Tell the archiver that MoniCA needs to shut down so that unflushed data can be written out.
@@ -584,6 +591,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             try {
                 RelTime.factory(100000).sleep();
             } catch (Exception e) {
+                itsLogger.warn("exception caught: " + e);
             }
         }
     }
