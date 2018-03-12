@@ -128,7 +128,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         Map<String, String> tags;
         String measurement;
         String field;
-        AbsTime lastTimestamp = AbsTime.NEVER;
+        AbsTime lastTimestamp = AbsTime.ASAP;
     }
 
     private final Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<PointDescription, InfluxSeries>();
