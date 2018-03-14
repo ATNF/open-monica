@@ -18,4 +18,4 @@ Some features:
   * Used at research facilities with tens of thousands of real-time monitor points.
   * Easily export data for analysis in spreadsheets or take graphical screen-shots.
 
-The Downloads section is mainly for historical reference, if you would like to give MoniCA a try then please check out the [Installation](wiki/Installation) wiki page.
+The Downloads section is mainly for historical reference, if you would like to give MoniCA a try then please check out the [Installation](../../wiki/Installation) wiki page.
