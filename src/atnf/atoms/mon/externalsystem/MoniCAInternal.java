@@ -26,6 +26,8 @@ import atnf.atoms.mon.transaction.*;
  * <li><b>points</b> Return the current number of points defined on the server.
  * <li><b>systems</b> Return the current number of external systems defined on the system.
  * <li><b>uptime</b> The elapsed time since the server was started.
+ * <li><b>EPICSPending</b> The number of outstanding EPICS Channel Access connections.
+ * <li><b>EPICSlost</b> The current number of lost EPICS Channel Access connections.
  * </ul>
  * 
  * @author David Brodrick
@@ -59,6 +61,10 @@ class MoniCAInternal extends ExternalSystem {
           pd.setData(Time.diff(new AbsTime(), itsStartTime));
         } else if (thistrans.getString().equals("dUTC")) {
           pd.setData(DUTC.get());
+        } else if (thistrans.getString().equals("EPICSPending")) {
+          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumPendingConnections());
+        } else if (thistrans.getString().equals("EPICSLost")) {
+          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumLostConnections());
         }
 
         desc.firePointEvent(new PointEvent(this, pd, true));

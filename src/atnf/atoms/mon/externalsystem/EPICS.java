@@ -69,6 +69,11 @@ public class EPICS extends ExternalSystem {
    */
   protected HashMap<String, Vector<Object[]>> itsRequiresMonitor = new HashMap<String, Vector<Object[]>>();
 
+  /**
+   * Count of the number of channel access connections currently lost
+   */
+  protected int itsLostConnectionCount = 0;
+
   public EPICS(String[] args) {
     super("EPICS");
 
@@ -89,6 +94,24 @@ public class EPICS extends ExternalSystem {
     } catch (Exception e) {
       theirLogger.error("Creating ChannelConnector: " + e);
     }
+  }
+
+  /**
+   * get the number of lost Channel Access Connections
+   *
+   * @return number of lost connections
+   */
+  public int getNumLostConnections() {
+    return itsLostConnectionCount;
+  }
+
+  /**
+   * get the number of pending EPICS connections
+   *
+   * @return number of pending conenctions
+   */
+  public int getNumPendingConnections() {
+    return itsNeedsConnecting.size();
   }
 
   /**
@@ -232,6 +255,9 @@ public class EPICS extends ExternalSystem {
     private float itsMinCAConnectTimeout = (float)0.2; // secs
     private AbsTime itsStartTime;
 
+    public int itsNewChannels;
+    public int itsPendingChannels;
+
     public ChannelConnector() {
       super("EPICS ChannelConnector");
       itsStartTime = new AbsTime();
@@ -286,6 +312,8 @@ public class EPICS extends ExternalSystem {
         // Try to connect to the channels
         try {
           theirLogger.debug("ChannelConnector: Attempting to connect " + newchannels.size() + "/" + asarray.size() + " pending channels");
+          itsNewChannels = newchannels.size();
+          itsPendingChannels = asarray.size();
           itsContext.pendIO(itsCAConnectTimeout);   
         } catch (Exception e) {
           //theirLogger.debug("ChannelConnector: pendIO: " + e);
@@ -494,6 +522,17 @@ public class EPICS extends ExternalSystem {
         }
         // Record the state
         itsConnectionLogMap.put(itsPV, Boolean.valueOf(ev.isConnected()));
+      }
+
+      // sum up the current number
+      // of lost connections
+      itsLostConnectionCount = 0;
+      Iterator it = itsConnectionLogMap.entrySet().iterator();
+      while (it.hasNext()) {
+        ConcurrentHashMap.Entry pair = (ConcurrentHashMap.Entry)it.next();
+        if (!(Boolean)pair.getValue()) {
+          ++itsLostConnectionCount;
+        }
       }
 
       if (!ev.isConnected()) {
