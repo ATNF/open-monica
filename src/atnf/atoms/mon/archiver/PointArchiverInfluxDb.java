@@ -92,7 +92,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Tag Extractor for generating Influxdb Tags
      */
-    private Map<String, TagExtractor> tags = null;
+    private Map<String, TagExtractor> itsTags = null;
 
     /**
      * Queue of batch updates to send to InfluxDB server
@@ -138,6 +138,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
      */
     private InfluxDB itsInfluxDB = null;
 
+    private int itsUnmappedPoints = 0;
 
     /* Static block to parse parameters. */
     static {
@@ -167,10 +168,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
         // load tags
         itsLogger.info("loading InfluxDB mappings from " + theirTagFilePath);
         final OrderedProperties tagProperties = OrderedProperties.getInstance(theirTagFilePath);
-        tags = new LinkedHashMap<String, TagExtractor>();
+        itsTags = new LinkedHashMap<String, TagExtractor>();
         for (Object o : tagProperties.getProperties().entrySet()) {
             Map.Entry pair = (Map.Entry) o;
-            tags.put((String) pair.getKey(), TagExtractor.fromString((String) pair.getValue()));
+            itsTags.put((String) pair.getKey(), TagExtractor.fromString((String) pair.getValue()));
         }
 
         // chain the ASCII archiver
@@ -230,6 +231,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsInfluxDB.close();
             itsInfluxDB = null;
         }
+        itsLogger.info("done shutting down");
     }
 
     /**
@@ -387,7 +389,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             String pointName = pm.getSource() + "." + pm.getName();
             seriesInfo.tags = new HashMap<String, String>();
             final TagExtractor.Holder nameHolder = new TagExtractor.Holder(pointName);
-            for (Object o : tags.entrySet()) {
+            for (Object o : itsTags.entrySet()) {
                 Map.Entry pair = (Map.Entry) o;
                 String key = (String) pair.getKey();
                 TagExtractor te = (TagExtractor) pair.getValue();
@@ -395,6 +397,16 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 if (result != null) {
                     seriesInfo.tags.put(key, result);
                 }
+            }
+
+            // if there are no explicit tags found then point has not
+            // been mapped.  In this case just map the MoniCA source
+            // to a tag
+            if (seriesInfo.tags.size() == 0) {
+                TagExtractor te = TagExtractor.fromString(pm.getSource());
+                seriesInfo.tags.put("source", te.apply(nameHolder));
+                itsLogger.warn("point " + pm.getFullName() + " not explicitly mapped to influx");
+                ++itsUnmappedPoints;
             }
 
             // add unit as a tag
@@ -453,6 +465,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsLogger.error("map not ready");
             return;
         }
+
         // TODO foreach leads to comodification error
         //noinspection ForLoopReplaceableByForEach
         for (int i = 0; i < pd.size(); i++) {
@@ -497,7 +510,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         long elapsedPoint = System.currentTimeMillis() - itsOldestPointTime;
         long batchAge = (System.nanoTime() - itsBatchStart) / 1000000;
         if (itsCurrentBatch.getPoints().size() >= theirInfluxBatchSize
-                || batchAge > theirInfluxBatchAge) {
+                || (itsCurrentBatch.getPoints().size() > 0 && batchAge > theirInfluxBatchAge)) {
             try {
                 if (itsMetadataBatch != null) {
                     // add any remaining metadata before we archive any points
@@ -505,7 +518,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
-                itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " points age " + elapsedPoint + "ms");
+                itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " point age " + elapsedPoint + "ms");
                 itsBatchQueue.addLast(itsCurrentBatch);
                 itsCurrentBatch = null;
                 itsOldestPointTime = 0;
