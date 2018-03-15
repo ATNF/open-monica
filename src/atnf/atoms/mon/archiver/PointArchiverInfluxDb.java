@@ -138,7 +138,21 @@ public class PointArchiverInfluxDb extends PointArchiver {
      */
     private InfluxDB itsInfluxDB = null;
 
+
+	/** 
+	* numper of unmapped points
+	*/
     private int itsUnmappedPoints = 0;
+
+	/**
+	* points per second sent to InfluxDB
+	*/
+    private float itsIngestRate = 0;
+
+	/**
+	* latency in batching EPICS point to Influx
+	*/
+    private long itsIngestLatency = 0;
 
     /* Static block to parse parameters. */
     static {
@@ -183,6 +197,31 @@ public class PointArchiverInfluxDb extends PointArchiver {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * get the number of unmapped points
+     *
+     * @return number of points not explicityly mapped to influx fields & tags
+     */
+    public int getUnmappedPoints() {
+        return itsUnmappedPoints;
+    }
+
+    /** get the current ingest rate
+     *
+     * @return points per second send to InfluxDB
+     */
+    public float getIngestRate() {
+        return itsIngestRate;
+    }
+
+    /** get the current ingest latency
+     *
+     * @return time diff between EPICS timestamp and influx batching
+     */
+    public long getIngestLatency() {
+        return itsIngestLatency;
     }
 
     /**
@@ -405,7 +444,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
             if (seriesInfo.tags.size() == 0) {
                 TagExtractor te = TagExtractor.fromString(pm.getSource());
                 seriesInfo.tags.put("source", te.apply(nameHolder));
-                itsLogger.warn("point " + pm.getFullName() + " not explicitly mapped to influx");
+                itsLogger.warn("point " + pm.getFullName() + " not mapped to influx");
                 ++itsUnmappedPoints;
             }
 
@@ -441,7 +480,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                         .build();
                 itsMetadataBatch.point(metadata);
                 if (itsMetadataBatch.getPoints().size() >= theirInfluxBatchSize) {
-                    itsLogger.debug("adding metadata");
+                    itsLogger.trace("adding metadata");
                     itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
@@ -496,8 +535,13 @@ public class PointArchiverInfluxDb extends PointArchiver {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).floatValue());
                     } else if (pointData.getData() instanceof Integer) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).intValue());
+                    } else if (pointData.getData() instanceof Long) {
+                        pb.addField(seriesInfo.field, ((Number) pointValueObj).longValue());
                     } else if (pointValueObj instanceof String) {
                         pb.addField(seriesInfo.field, (String) pointValueObj);
+                    }
+                    else {
+                        itsLogger.warn("unhandled type " + pointValueObj.getClass().getName());
                     }
                     itsCurrentBatch.point(pb.build());
                 }
@@ -507,18 +551,18 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
         seriesInfo.lastTimestamp = pd.lastElement().getTimestamp();
 
-        long elapsedPoint = System.currentTimeMillis() - itsOldestPointTime;
+        itsIngestLatency = System.currentTimeMillis() - itsOldestPointTime;
         long batchAge = (System.nanoTime() - itsBatchStart) / 1000000;
         if (itsCurrentBatch.getPoints().size() >= theirInfluxBatchSize
                 || (itsCurrentBatch.getPoints().size() > 0 && batchAge > theirInfluxBatchAge)) {
             try {
                 if (itsMetadataBatch != null) {
                     // add any remaining metadata before we archive any points
-                    itsLogger.debug("adding metadata " + itsMetadataBatch.getPoints().size());
+                    itsLogger.trace("adding metadata " + itsMetadataBatch.getPoints().size());
                     itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
-                itsLogger.debug("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " point age " + elapsedPoint + "ms");
+                itsLogger.trace("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " point age " + itsIngestLatency + "ms");
                 itsBatchQueue.addLast(itsCurrentBatch);
                 itsCurrentBatch = null;
                 itsOldestPointTime = 0;
@@ -565,13 +609,13 @@ public class PointArchiverInfluxDb extends PointArchiver {
                             }
                         }
                         long elapsed = (System.nanoTime() - startTime) / 1000000;
-                        itsLogger.debug("sent " + batchPoints.getPoints().size()
+                        itsLogger.trace("sent " + batchPoints.getPoints().size()
                                 + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
                         rateElapsed = (System.nanoTime() - rateStart) / 1000000;
                         pointsPerMinute += batchPoints.getPoints().size();
                         if (rateElapsed >= 60000) {
-                            double rate = 1.0 * pointsPerMinute / 60;
-                            itsLogger.info(String.format("ingest rate %.1f points per second", rate));
+                            itsIngestRate = (float) (1.0 * pointsPerMinute / 60);
+                            itsLogger.debug(String.format("ingest rate %.1f points per second", itsIngestRate));
                             rateStart = System.nanoTime();
                             pointsPerMinute = 0;
                         }

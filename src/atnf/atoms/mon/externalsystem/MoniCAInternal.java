@@ -13,6 +13,8 @@ import atnf.atoms.time.DUTC;
 import atnf.atoms.time.Time;
 import atnf.atoms.mon.*;
 import atnf.atoms.mon.transaction.*;
+import atnf.atoms.mon.archiver.PointArchiver;
+import atnf.atoms.mon.archiver.PointArchiverInfluxDb;
 
 /**
  * Used to return data about the MoniCA server.
@@ -26,8 +28,11 @@ import atnf.atoms.mon.transaction.*;
  * <li><b>points</b> Return the current number of points defined on the server.
  * <li><b>systems</b> Return the current number of external systems defined on the system.
  * <li><b>uptime</b> The elapsed time since the server was started.
- * <li><b>EPICSPending</b> The number of outstanding EPICS Channel Access connections.
- * <li><b>EPICSlost</b> The current number of lost EPICS Channel Access connections.
+ * <li><b>EPICS_PendingConnections</b> The number of outstanding EPICS Channel Access connections.
+ * <li><b>EPICS_LostConnections</b> The current number of lost EPICS Channel Access connections.
+ * <li><b>InfluxDB_IngestRate</b> The ingest rate to InfluxDB in points per second
+ * <li><b>InfluxDB_IngestLatency</b> The time difference between a point data timestamp and ingest time
+ * <li><b>InfluxDB_UnmappedPoints</b>Number of MoniCA points that didn't match any Influx mapping
  * </ul>
  * 
  * @author David Brodrick
@@ -61,10 +66,16 @@ class MoniCAInternal extends ExternalSystem {
           pd.setData(Time.diff(new AbsTime(), itsStartTime));
         } else if (thistrans.getString().equals("dUTC")) {
           pd.setData(DUTC.get());
-        } else if (thistrans.getString().equals("EPICSPending")) {
+        } else if (thistrans.getString().equals("EPICS_PendingConnections")) {
           pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumPendingConnections());
-        } else if (thistrans.getString().equals("EPICSLost")) {
+        } else if (thistrans.getString().equals("EPICS_LostConnections")) {
           pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumLostConnections());
+        } else if (thistrans.getString().equals("InfluxDB_UnmappedPoints")) {
+          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getUnmappedPoints());
+        } else if (thistrans.getString().equals("InfluxDB_IngestRate")) {
+          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getIngestRate());
+        } else if (thistrans.getString().equals("InfluxDB_IngestLatency")) {
+          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getIngestLatency());
         }
 
         desc.firePointEvent(new PointEvent(this, pd, true));
