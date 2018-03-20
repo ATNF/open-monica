@@ -8,6 +8,7 @@
   <property name="javadoc" value="javadoc"/>
   <property name="jarname" value="open-monica.jar"/>
   <property name="prefix" value="/usr/local/"/>
+  <property name="ice-version" value="3.5"/>
 
 
   <!-- Purge build and doc directories (but not jar file) -->
@@ -20,9 +21,15 @@
   
   <!-- Compile the java classes -->
   <target name="compile">
+    <copy todir="3rdParty">
+    <fileset dir="ice/">
+      <include name="*-${ice-version}.jar"/>
+    </fileset>
+    </copy>
+
     <mkdir dir="${output}"/>
     <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">            
-<compilerarg value="-Xlint:unchecked"/>
+      <compilerarg value="-Xlint:unchecked"/>
       <src path="${src}"/>            
       <classpath refid="3rdParty"/>
     </javac>
@@ -136,7 +143,6 @@ java -DIce.MessageSizeMax=32768 -cp ${jarname} atnf.atoms.mon.gui.MonFrame
       <include name="*.jar"/>
     </fileset>
   </path>
-
 
   <!-- Get list of 3rdParty jar files formatted for manifest file -->
   <pathconvert property="3rdPartyMF" pathsep=" ">  
