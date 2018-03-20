@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<project name="open-monica-interfaces" basedir="." default="jar">
+
+    <!-- Define some names/properties -->
+    <property name="src" value="src"/>
+    <property name="output" value="build"/>
+    <property name="ice-version" value="3.5"/>
+    <property name="jarname" value="open-monica-ice-${ice-version}.jar"/>
+    <property name="outdir" value="../ice"/>
+
+    <!-- List 3rdParty jar files for compilation -->
+    <path id="3rdParty">
+        <fileset dir="../ice/">
+            <include name="ice-${ice-version}*.jar"/>
+        </fileset>
+    </path>
+
+    <!-- Purge build and doc directories (but not jar file) -->
+    <target name="clean">
+        <delete dir="${src}"/>
+        <delete dir="${output}"/>
+        <delete file="${jarname}"/>
+    </target>
+
+    <!--Generate java classes from interfaces -->
+    <target name="slice" description="slice2java">
+        <mkdir dir="${src}"/>
+        <exec dir="." executable="slice2java">
+            <arg line="--output-dir ${src} MoniCA.ice"/>
+        </exec>
+    </target>
+
+    <!-- Compile the java classes -->
+    <target name="compile" depends="slice">
+        <mkdir dir="${output}"/>
+        <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">
+            <compilerarg value="-Xlint:unchecked"/>
+            <src path="${src}"/>
+            <classpath refid="3rdParty"/>
+        </javac>
+    </target>
+
+
+    <!-- Build and sign the jar file -->
+    <target name="jar" depends="compile">
+        <jar destfile="${jarname}">
+            <!--<manifest>-->
+                <!--<attribute name="Class-Path" value="${3rdPartyMF}"/>-->
+            <!--</manifest>-->
+            <fileset dir="${output}"/>
+        </jar>
+        <!-- <signjar jar="${jarname}" alias="monica" storepass="monica" keystore="signature.keys"/> -->
+    </target>
+
+
+    <!-- Install the jar files to a run-time directory -->
+    <target name="install" depends="jar">
+        <!-- Copy jar files to lib area -->
+        <copy file="${jarname}" todir="${outdir}"/>
+    </target>
+</project>
