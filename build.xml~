@@ -28,8 +28,13 @@
     </copy>
 
     <mkdir dir="${output}"/>
+<<<<<<< HEAD
     <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">            
       <compilerarg value="-Xlint:unchecked"/>
+=======
+    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">
+<compilerarg value="-Xlint:unchecked"/>
+>>>>>>> origin/feature-influxdb
       <src path="${src}"/>            
       <classpath refid="3rdParty"/>
     </javac>
