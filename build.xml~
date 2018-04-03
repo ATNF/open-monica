@@ -1,0 +1,180 @@
+<?xml version="1.0"?>
+<project name="open-monica" basedir="." default="jar">
+
+  <!-- Define some names/properties -->
+  <property name="src" value="src"/>
+  <property name="config" value="config"/>
+  <property name="output" value="build"/>
+  <property name="javadoc" value="javadoc"/>
+  <property name="jarname" value="open-monica.jar"/>
+  <property name="prefix" value="/usr/local/"/>
+  <property name="ice-version" value="3.5"/>
+
+
+  <!-- Purge build and doc directories (but not jar file) -->
+  <target name="clean">
+    <delete dir="${output}"/>
+    <delete dir="${javadoc}"/>
+    <delete file="${jarname}"/>
+  </target>
+  
+  
+  <!-- Compile the java classes -->
+  <target name="compile">
+    <copy todir="3rdParty">
+    <fileset dir="ice/">
+      <include name="*-${ice-version}.jar"/>
+    </fileset>
+    </copy>
+
+    <mkdir dir="${output}"/>
+<<<<<<< HEAD
+    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">            
+      <compilerarg value="-Xlint:unchecked"/>
+=======
+    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">
+<compilerarg value="-Xlint:unchecked"/>
+>>>>>>> origin/feature-influxdb
+      <src path="${src}"/>            
+      <classpath refid="3rdParty"/>
+    </javac>
+  </target>
+
+
+  <!-- Build and sign the jar file -->
+  <target name="jar" depends="compile">
+    <jar destfile="${jarname}">
+      <manifest>
+        <attribute name="Main-Class" value="atnf.atoms.mon.MoniCAMain"/>
+        <attribute name="Class-Path" value="${3rdPartyMF}"/>
+      </manifest>
+      <fileset dir="${output}"/>
+      <fileset dir="${config}"/>              
+      <fileset dir="${src}" casesensitive="no">
+        <include name="**/*.gif"/>
+        <include name="**/*.png"/>
+        <include name="**/*.wav"/>
+        <include name="**/*.au"/>
+      </fileset>
+    </jar>
+    <!-- <signjar jar="${jarname}" alias="monica" storepass="monica" keystore="signature.keys"/> -->
+  </target>
+
+
+  <!-- Install the jar files to a run-time directory -->
+  <target name="install" depends="jar">
+    <!-- Copy jar files to lib area -->
+    <property name="libdir" value="${prefix}/lib"/>
+    <mkdir dir="${libdir}"/>
+    <copy file="${jarname}" todir="${libdir}"/>
+    <copy todir="${libdir}">
+      <fileset dir="3rdParty/">
+        <include name="*.jar"/>
+      </fileset>
+    </copy>
+
+    <!-- Generate some scripts in bin area -->
+    <property name="bindir" value="${prefix}/bin"/>
+    <property name="server_invocation" value="java -DIce.ThreadPool.Server.SizeMax=20 -DIce.MessageSizeMax=32768 -jar ${jarname}"/>
+    <mkdir dir="${bindir}"/>
+    <echo file="${bindir}/open-monica-server.sh" append="false">#!/bin/sh
+
+case "$1" in
+  start)
+    NUM=$$(ps -efw | grep "${server_invocation}" | grep -v grep | wc -l)
+    if (( $$NUM == 0 )); then
+      cd ${libdir}
+      which nohup >/dev/null 2>/dev/null
+      if (( $? )); then
+        echo Cannot start in background: \'nohup\' not found
+        $0 start-fg
+      else
+        echo Invoking Open-MoniCA server in background using \'nohup\'
+        nohup ${server_invocation} >/dev/null &amp;
+      fi
+    else
+      echo Open-MoniCA server is already running
+    fi        
+    ;;
+
+  start-fg)
+    NUM=$$(ps -efw | grep "${server_invocation}" | grep -v grep | wc -l)
+    if (( $$NUM == 0 )); then
+      cd ${libdir}
+      echo Starting Open-MoniCA server in the foreground
+      ${server_invocation}
+    else
+      echo Open-MoniCA server is already running
+    fi        
+    ;;   
+
+  stop)
+    PROCLINE=$(ps -efw | grep "${server_invocation}" | grep -v grep)
+    if (( $? )); then
+      echo Open-MoniCA server is not running
+    else
+      PID=$(echo $PROCLINE | awk '{print $2}')
+      echo Open-MoniCA server running as PID=$PID - Terminating Now
+      kill $PID
+    fi
+    ;;
+    
+  restart)
+    $0 stop
+    sleep 3
+    $0 start
+    ;;
+    
+  *)
+    echo "Usage: open-monica-server.sh {start|start-fg|stop|restart}"
+    exit 1
+    ;;
+esac
+    </echo>
+    <chmod file="${bindir}/open-monica-server.sh" perm="ugo+rx"/>
+
+    <echo file="${bindir}/open-monica-client.sh" append="false">#!/bin/sh
+
+cd ${libdir}
+java -DIce.MessageSizeMax=32768 -cp ${jarname} atnf.atoms.mon.gui.MonFrame
+    </echo>
+    <chmod file="${bindir}/open-monica-client.sh" perm="ugo+rx"/>
+  </target>
+
+
+  <!-- List 3rdParty jar files for compilation -->
+  <path id="3rdParty">
+    <fileset dir="3rdParty/">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+
+  <!-- Get list of 3rdParty jar files formatted for manifest file -->
+  <pathconvert property="3rdPartyMF" pathsep=" ">  
+    <mapper>  
+      <chainedmapper>  
+        <flattenmapper />
+        <mapper>
+          <globmapper from="*" to="*" />
+          <globmapper from="*" to="3rdParty/*" />
+        </mapper>
+      </chainedmapper>  
+    </mapper>  
+    <path>  
+      <fileset dir="3rdParty">  
+        <include name="**/*.jar" />  
+      </fileset>  
+    </path>  
+  </pathconvert>   
+
+
+  <!-- Build javadoc documentation tree -->	
+  <target name="javadoc">
+    <mkdir dir="${javadoc}/"/>
+    <javadoc destdir="${javadoc}/"> 
+      <link href="http://java.sun.com/javase/6/docs/api/"/>
+      <fileset dir="${src}/" includes="**/*.java" />
+    </javadoc>
+  </target>
+  
+</project>
