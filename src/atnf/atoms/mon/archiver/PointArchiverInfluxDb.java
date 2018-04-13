@@ -323,8 +323,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsChainedArchiver.start();
         }
 
-        RelTime sleeptime1 = RelTime.factory(5000);
-        RelTime sleeptime2 = RelTime.factory(100);
+        RelTime sleeptime1 = RelTime.factory(25000);
+        RelTime sleeptime2 = RelTime.factory(500);
         while (true) {
             boolean flushing = false;
             if (itsShuttingDown) {
@@ -593,9 +593,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
                                 itsLogger.warn("write to influx failed, dropping batch: " + e2);
                             }
                         }
-                        long elapsed = (System.nanoTime() - startTime) / 1000000;
-                        itsLogger.trace("sent " + batchPoints.getPoints().size()
-                                + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
                         totalPoints += batchPoints.getPoints().size();
                         rateElapsed = (System.nanoTime() - rateStart) / 1000000;
                         if (rateElapsed >= 10000) {
