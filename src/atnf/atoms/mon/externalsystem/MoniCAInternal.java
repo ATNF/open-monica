@@ -66,6 +66,8 @@ class MoniCAInternal extends ExternalSystem {
           pd.setData(Time.diff(new AbsTime(), itsStartTime));
         } else if (thistrans.getString().equals("dUTC")) {
           pd.setData(DUTC.get());
+        } else if (thistrans.getString().equals("EPICS_ActiveConnections")) {
+          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumActiveConnections());
         } else if (thistrans.getString().equals("EPICS_PendingConnections")) {
           pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumPendingConnections());
         } else if (thistrans.getString().equals("EPICS_LostConnections")) {

@@ -10,6 +10,7 @@ package atnf.atoms.mon.externalsystem;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.lang.Integer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import atnf.atoms.time.*;
 import atnf.atoms.mon.*;
@@ -72,7 +73,7 @@ public class EPICS extends ExternalSystem {
   /**
    * Count of the number of channel access connections currently lost
    */
-  protected int itsLostConnectionCount = 0;
+  protected AtomicInteger itsLostConnectionCount = new AtomicInteger();
 
   public EPICS(String[] args) {
     super("EPICS");
@@ -102,7 +103,7 @@ public class EPICS extends ExternalSystem {
    * @return number of lost connections
    */
   public int getNumLostConnections() {
-    return itsLostConnectionCount;
+    return itsLostConnectionCount.get();
   }
 
   /**
@@ -112,6 +113,10 @@ public class EPICS extends ExternalSystem {
    */
   public int getNumPendingConnections() {
     return itsNeedsConnecting.size();
+  }
+
+  public int getNumActiveConnections() {
+    return itsChannelMap.size();
   }
 
   /**
@@ -333,6 +338,10 @@ public class EPICS extends ExternalSystem {
             // This channel connected okay
             itsChannelMap.put(thispv, thischan);
             itsNeedsConnecting.remove(thispv);
+            if (itsConnectionLogMap.get(thispv) == Boolean.FALSE) {
+              itsConnectionLogMap.put(thispv, Boolean.TRUE);
+              itsLostConnectionCount.decrementAndGet();
+            }
           } else {
             // This channel failed to connect
             try {
@@ -341,6 +350,7 @@ public class EPICS extends ExternalSystem {
                 theirLogger.warn("ChannelConnector: Failed to connect to PV " + thispv);
                 // Record that we've logged it
                 itsConnectionLogMap.put(thispv, Boolean.FALSE);
+                itsLostConnectionCount.incrementAndGet();
               }
               thischan.destroy();
             } catch (Exception e) {
@@ -517,22 +527,13 @@ public class EPICS extends ExternalSystem {
         // State has changed, so log a message
         if (ev.isConnected()) {
           theirLogger.info("EPICSListener: Connection restored to PV: " + itsPV);
+          itsLostConnectionCount.decrementAndGet();
         } else {
           theirLogger.warn("EPICSListener: Lost connection to PV: " + itsPV);
+          itsLostConnectionCount.incrementAndGet();
         }
         // Record the state
         itsConnectionLogMap.put(itsPV, Boolean.valueOf(ev.isConnected()));
-      }
-
-      // sum up the current number
-      // of lost connections
-      itsLostConnectionCount = 0;
-      Iterator it = itsConnectionLogMap.entrySet().iterator();
-      while (it.hasNext()) {
-        ConcurrentHashMap.Entry pair = (ConcurrentHashMap.Entry)it.next();
-        if (!(Boolean)pair.getValue()) {
-          ++itsLostConnectionCount;
-        }
       }
 
       if (!ev.isConnected()) {
