@@ -269,7 +269,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsInfluxDB.close();
             itsInfluxDB = null;
         }
-        itsLogger.info("done shutting down");
     }
 
     /**
@@ -378,7 +377,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 itsLogger.warn("exception caught: " + e);
             }
         }
-        itsLogger.info("shutting down archiver");
+        itsLogger.info("done shutting down");
     }
 
     /**
