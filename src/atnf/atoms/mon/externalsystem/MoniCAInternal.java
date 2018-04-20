@@ -28,6 +28,7 @@ import atnf.atoms.mon.archiver.PointArchiverInfluxDb;
  * <li><b>points</b> Return the current number of points defined on the server.
  * <li><b>systems</b> Return the current number of external systems defined on the system.
  * <li><b>uptime</b> The elapsed time since the server was started.
+ * <li><b>EPICS_ActiveConnections</b> The number of connected EPICS Channel Access connections.
  * <li><b>EPICS_PendingConnections</b> The number of outstanding EPICS Channel Access connections.
  * <li><b>EPICS_LostConnections</b> The current number of lost EPICS Channel Access connections.
  * <li><b>InfluxDB_IngestRate</b> The ingest rate to InfluxDB in points per second
