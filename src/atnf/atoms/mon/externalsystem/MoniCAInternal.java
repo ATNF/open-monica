@@ -67,18 +67,33 @@ class MoniCAInternal extends ExternalSystem {
           pd.setData(Time.diff(new AbsTime(), itsStartTime));
         } else if (thistrans.getString().equals("dUTC")) {
           pd.setData(DUTC.get());
-        } else if (thistrans.getString().equals("EPICS_ActiveConnections")) {
-          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumActiveConnections());
-        } else if (thistrans.getString().equals("EPICS_PendingConnections")) {
-          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumPendingConnections());
-        } else if (thistrans.getString().equals("EPICS_LostConnections")) {
-          pd.setData(((EPICS)ExternalSystem.getExternalSystem("EPICS")).getNumLostConnections());
-        } else if (thistrans.getString().equals("InfluxDB_UnmappedPoints")) {
-          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getUnmappedPoints());
-        } else if (thistrans.getString().equals("InfluxDB_IngestRate")) {
-          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getIngestRate());
-        } else if (thistrans.getString().equals("InfluxDB_IngestLatency")) {
-          pd.setData(((PointArchiverInfluxDb)PointArchiver.getPointArchiver()).getIngestLatency());
+        } else if (thistrans.getString().startsWith("EPICS")) {
+          EPICS epics = (EPICS) ExternalSystem.getExternalSystem("EPICS");
+          if (epics == null) {
+            // don't have EPICS so ignore these points
+            continue;
+          }
+          if (thistrans.getString().equals("EPICS_ActiveConnections")) {
+            pd.setData(epics.getNumActiveConnections());
+          } else if (thistrans.getString().equals("EPICS_PendingConnections")) {
+            pd.setData(epics.getNumPendingConnections());
+          } else if (thistrans.getString().equals("EPICS_LostConnections")) {
+            pd.setData(epics.getNumLostConnections());
+          }
+        }
+        else if (thistrans.getString().startsWith("InfluxDB")) {
+            if (!(PointArchiver.getPointArchiver() instanceof PointArchiverInfluxDb)) {
+              // InfluxDB archiver not active so ignore
+              continue;
+            }
+            PointArchiverInfluxDb influx = (PointArchiverInfluxDb)PointArchiver.getPointArchiver();
+            if (thistrans.getString().equals("InfluxDB_UnmappedPoints")) {
+              pd.setData(influx.getUnmappedPoints());
+            } else if (thistrans.getString().equals("InfluxDB_IngestRate")) {
+              pd.setData(influx.getIngestRate());
+            } else if (thistrans.getString().equals("InfluxDB_IngestLatency")) {
+              pd.setData(influx.getIngestLatency());
+          }
         }
 
         desc.firePointEvent(new PointEvent(this, pd, true));
