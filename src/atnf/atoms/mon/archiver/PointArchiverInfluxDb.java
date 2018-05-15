@@ -128,7 +128,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
         Map<String, String> tags;
         String measurement;
         String field;
-        AbsTime lastTimestamp = AbsTime.ASAP;
     }
 
     private final Map<PointDescription, InfluxSeries> itsInfluxMap = new HashMap<PointDescription, InfluxSeries>();
@@ -147,7 +146,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
 	/**
 	* points per second sent to InfluxDB
 	*/
-    private float itsIngestRate = 0;
+    private long itsIngestRate = 0;
 
 	/**
 	* latency in batching EPICS point to Influx
@@ -212,7 +211,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
      *
      * @return points per second send to InfluxDB
      */
-    public float getIngestRate() {
+    public long getIngestRate() {
         return itsIngestRate;
     }
 
@@ -270,7 +269,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsInfluxDB.close();
             itsInfluxDB = null;
         }
-        itsLogger.info("done shutting down");
     }
 
     /**
@@ -311,8 +309,10 @@ public class PointArchiverInfluxDb extends PointArchiver {
     }
 
     /**
-     * Main loop for the archiving thread. Override from Archiver class
-     * due to need for archiving to InfluxDB in realtime.
+     * Main loop for the archiving thread.
+     *
+     * OVERRIDE FROM ARCHIVER CLASS DUE TO NEED
+     * FOR ARCHIVING TO INFLUXDB IN REALTIME.
      */
     public void run() {
         setName("Point Archiver");
@@ -322,8 +322,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
             itsChainedArchiver.start();
         }
 
-        RelTime sleeptime1 = RelTime.factory(50000);
-        RelTime sleeptime2 = RelTime.factory(1000);
+        RelTime sleeptime1 = RelTime.factory(25000);
+        RelTime sleeptime2 = RelTime.factory(500);
         while (true) {
             boolean flushing = false;
             if (itsShuttingDown) {
@@ -348,39 +348,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
 
                     //noinspection StatementWithEmptyBody
                     if (!itsShuttingDown) {
-                        // Add small offsets based on hash of point name.
-                        // This prevents bulk points all being flushed together each time.
-                        int namehash = pm.getFullName().hashCode();
-                        int minnumrecs = theirMaxRecordCount + (namehash % theirRecordCountOffset);
-                        AbsTime cutoff2 = cutoff.add(namehash % theirMaxAgeOffset);
                         // archive immediately to influx, it will handle batching
                         saveNow(pm, thisdata);
-
-                        if (thisdata.size() < minnumrecs && thisdata.lastElement().getTimestamp().isAfter(cutoff2)) {
-                            // Point does not meet any criteria for writing to the archive at this time
-                            continue;
-                        }
-                    } else {
-                        // itsLogger.debug("Flushing " + thisdata.size() + " records for " + pm.getFullName() + " because shutdown requested");
-                    }
-
-                    if (itsChainedArchiver == null) {
-                        thisdata.clear();
-                    } else {
-                        HashSet<String> archivingStatus = itsChainedArchiver.itsBeingArchived;
-                        // TODO need to fix in PointArchiver
-                        // noinspection SynchronizeOnNonFinalField
-                        synchronized (itsChainedArchiver.itsBeingArchived) {
-                            if (archivingStatus.contains(pm.getFullName())) {
-                                // Point is already being archived
-                                //itsLogger.warn(pm.getFullName() + " is already being archived");
-                                continue;
-                            } else {
-                                // Flag that the point is now being archived
-                                itsBeingArchived.add(pm.getFullName());
-                            }
-                        }
-                        itsChainedArchiver.saveNow(pm, thisdata);
                     }
 
                     try {
@@ -408,11 +377,14 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 itsLogger.warn("exception caught: " + e);
             }
         }
-        itsLogger.info("shutting down archiver");
+        itsLogger.info("done shutting down");
     }
 
     /**
      * Method to do the actual archiving.
+     *
+     * Will update points in batches and add to queue
+     * for sending to influx via the influx thread
      *
      * @param pm The point whos data we wish to archive.
      * @param pd Vector of data to be archived.
@@ -511,12 +483,6 @@ public class PointArchiverInfluxDb extends PointArchiver {
             try { //extract point data and metadata to write to influx
                 PointData pointData = pd.get(i);
 
-                if (pointData.getTimestamp().isBeforeOrEquals(seriesInfo.lastTimestamp)) {
-                    // skip points that we have already batched to Influx
-                    //itsLogger.debug(pm.getFullName() + " skipping point " + i);
-                    continue;
-                }
-
                 // pointTime in a BAT time so convert to epoch for Influx
                 Date pointDate = pointData.getTimestamp().getAsDate();
                 if (pointDate != null) {
@@ -549,12 +515,25 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 a.printStackTrace();
             }
         }
-        seriesInfo.lastTimestamp = pd.lastElement().getTimestamp();
 
-        itsIngestLatency = System.currentTimeMillis() - itsOldestPointTime;
+        // finished with point data now
+        pd.clear();
+
+        if (itsOldestPointTime > 0) {
+            itsIngestLatency = System.currentTimeMillis() - itsOldestPointTime;
+        }
+        long batchSize = itsCurrentBatch.getPoints().size();
         long batchAge = (System.nanoTime() - itsBatchStart) / 1000000;
-        if (itsCurrentBatch.getPoints().size() >= theirInfluxBatchSize
-                || (itsCurrentBatch.getPoints().size() > 0 && batchAge > theirInfluxBatchAge)) {
+        //long minBatchSize = 0;
+        long ingestRate = 0;
+        long minBatchSize = 0;
+        if (batchAge > 0) {
+            // scale the minimum batch size with the current
+            // rate and latency to handle varying workloads
+            ingestRate = 1000 * batchSize / batchAge;
+            minBatchSize = Math.min(itsIngestLatency/1000 * ingestRate, theirInfluxBatchSize);
+        }
+        if (batchSize >= theirInfluxBatchSize || (batchSize > minBatchSize && batchAge > theirInfluxBatchAge)) {
             try {
                 if (itsMetadataBatch != null) {
                     // add any remaining metadata before we archive any points
@@ -562,7 +541,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     itsBatchQueue.addLast(itsMetadataBatch);
                     itsMetadataBatch = null;
                 }
-                itsLogger.trace("adding batch to queue " + itsCurrentBatch.getPoints().size() + " batch age " + batchAge + " point age " + itsIngestLatency + "ms");
+                itsLogger.trace("adding " + batchSize + " to batch queue, batch age " + batchAge + "ms, batch rate " + ingestRate + "pps, point age " + itsIngestLatency + "ms");
                 itsBatchQueue.addLast(itsCurrentBatch);
                 itsCurrentBatch = null;
                 itsOldestPointTime = 0;
@@ -572,6 +551,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
         }
     }
 
+    // thread for sending data to influx
     private final Thread influxThread;
 
     {
@@ -579,8 +559,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
             @Override
             public void run() {
                 long rateStart = System.nanoTime();
-                long pointsPerMinute = 0;
-                long rateElapsed;
+                long totalPoints = 0;
+                long rateElapsed = 0;
 
                 while (true) {
                     try {
@@ -590,7 +570,9 @@ public class PointArchiverInfluxDb extends PointArchiver {
                             sleep(60000);
                             continue;
                         }
+
                         BatchPoints batchPoints = itsBatchQueue.takeFirst();
+
                         if (itsShuttingDown) {
                             itsLogger.info("shutting down influx thread");
                             break;
@@ -599,25 +581,23 @@ public class PointArchiverInfluxDb extends PointArchiver {
                         try {
                             itsInfluxDB.write(batchPoints);
                         } catch (Exception e) {
-                            itsLogger.warn("write to influx failed, try to reconnect");
+                            itsLogger.warn("write to influx failed, retrying: " + e);
+                            // reconnect once then try it again the drop it
                             shutdown();
-                            // put the points back in the queue
-                            if (itsBatchQueue.size() < 1000) {
-                                itsBatchQueue.addFirst(batchPoints);
-                            } else {
-                                itsLogger.warn("queue full, dropping batch");
+                            sleep(5000);
+                            setUp();
+                            try {
+                                itsInfluxDB.write(batchPoints);
+                            } catch (Exception e2) {
+                                itsLogger.warn("write to influx failed, dropping batch: " + e2);
                             }
                         }
-                        long elapsed = (System.nanoTime() - startTime) / 1000000;
-                        itsLogger.trace("sent " + batchPoints.getPoints().size()
-                                + " to influxdb in " + elapsed + "ms depth " + itsBatchQueue.size());
+                        totalPoints += batchPoints.getPoints().size();
                         rateElapsed = (System.nanoTime() - rateStart) / 1000000;
-                        pointsPerMinute += batchPoints.getPoints().size();
-                        if (rateElapsed >= 60000) {
-                            itsIngestRate = (float) (1.0 * pointsPerMinute / 60);
-                            itsLogger.debug(String.format("ingest rate %.1f points per second", itsIngestRate));
+                        if (rateElapsed >= 10000) {
+                            itsIngestRate = 1000 * totalPoints / rateElapsed;
                             rateStart = System.nanoTime();
-                            pointsPerMinute = 0;
+                            totalPoints = 0;
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -656,6 +636,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Return the last update which precedes the specified time. We interpret 'precedes' to mean data_time<=req_time.
      *
+     * ONLY OPERATES ON THE CHAINED ASCII ARCHIVER
+     *
      * @param pm Point to extract data for.
      * @param ts Find data preceding this timestamp.
      * @return PointData for preceding update or null if none found.
@@ -669,6 +651,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
 
     /**
      * Return the first update which follows the specified time. We interpret 'follows' to mean data_time>=req_time.
+     *
+     * ONLY OPERATES ON THE CHAINED ASCII ARCHIVER
      *
      * @param pm Point to extract data for.
      * @param ts Find data following this timestamp.
@@ -684,6 +668,8 @@ public class PointArchiverInfluxDb extends PointArchiver {
     /**
      * Purge all data for the given point that is older than the specified age in days.
      *
+     * ONLY OPERATES ON THE CHAINED ASCII ARCHIVER
+     *
      * @param pd The point whos data we wish to purge.
      */
     protected void purgeOldData(PointDescription pd) {
@@ -693,6 +679,37 @@ public class PointArchiverInfluxDb extends PointArchiver {
         itsChainedArchiver.purgeOldData(pd);
     }
 
+    /**
+     * Archive the data for the given point.  if we are chaining to
+     * the ASCII archiver as well, then forward point to it
+     *
+     * @param pm
+     *          The point that the data belongs to
+     * @param data
+     *          The data to send to Influx & save to disk
+     */
+    public void archiveData(PointDescription pm, PointData data) {
+        if (!itsShuttingDown) {
+            Vector<PointData> myVec = itsBuffer.get(pm);
+            if (myVec == null) {
+                // Lock buffer then check again to avoid race
+                synchronized (itsBuffer) {
+                    myVec = itsBuffer.get(pm);
+                    if (myVec == null) {
+                        myVec = new Vector<PointData>(100, 500);
+                        itsBuffer.put(pm, myVec);
+                    }
+                }
+            }
+            synchronized (myVec) {
+                // Add the new data to our storage buffer
+                myVec.add(data);
+            }
+            if (itsChainedArchiver != null) {
+                itsChainedArchiver.archiveData(pm, data);
+            }
+        }
+    }
 }
 
 
