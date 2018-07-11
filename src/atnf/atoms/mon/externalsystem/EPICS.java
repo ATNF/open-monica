@@ -10,6 +10,7 @@ package atnf.atoms.mon.externalsystem;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.lang.Integer;
+import java.lang.Byte;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import atnf.atoms.time.*;
@@ -20,6 +21,7 @@ import atnf.atoms.util.EnumItem;
 import gov.aps.jca.*;
 import gov.aps.jca.dbr.*;
 import gov.aps.jca.event.*;
+import gov.aps.jca.configuration.*;
 
 import com.cosylab.epics.caj.*;
 
@@ -75,15 +77,22 @@ public class EPICS extends ExternalSystem {
    */
   protected AtomicInteger itsLostConnectionCount = new AtomicInteger();
 
+
   public EPICS(String[] args) {
     super("EPICS");
-
     // Get the JCALibrary instance.
     JCALibrary jca = JCALibrary.getInstance();
     try {
-      // Create context with default configuration values.
-      itsContext = jca.createContext(JCALibrary.CHANNEL_ACCESS_JAVA);
-      //itsContext.addContextExceptionListener(this);
+      // See https://epics.anl.gov/bcda/jca/jca/2.1.2/tutorial.html#5 part 7)
+      // Create the Configuration object for our context.
+      DefaultConfiguration conf= new DefaultConfiguration("myContext");
+      // Define the context class.
+      conf.addAttribute("class", JCALibrary.CHANNEL_ACCESS_JAVA);
+      // Increase the max array length to cater for at least 512 epics strings (512 * 40 bytes)
+      conf.addAttribute("max_array_bytes", "21000");
+      // Create a context with this configuration.
+      itsContext = jca.createContext(conf);
+      //jca.listProperties();
     } catch (Exception e) {
       theirLogger.error("Creating Context: " + e);
     }
@@ -171,9 +180,9 @@ public class EPICS extends ExternalSystem {
                 type = DBRType.forName(tempdbr.getType().getName().replaceAll("DBR_", "DBR_STS_").replaceAll("_ENUM", "_STRING"));
                 thistrans.setType(type);
               }
-
+              int nElem = thischan.getElementCount();
               // Do the actual CA get operation
-              thischan.get(type, 1, listener);
+              thischan.get(type, nElem, listener);
             } catch (Exception e) {
               // Maybe the channel just became disconnected
               points[i].firePointEvent(new PointEvent(this, new PointData(points[i].getFullName()), true));
@@ -429,7 +438,9 @@ public class EPICS extends ExternalSystem {
                   } else {
 		    //theirLogger.debug("ChannelConnector: dbr type of PV " + thispv + " is " + thistype.toString());
                     // Needs to be monitored so data arrives as a specific type
-                    thischan.addMonitor(thistype, 1, Monitor.VALUE | Monitor.ALARM, listener);
+	            int nElem = thischan.getElementCount();
+		    //System.out.println("ChannelConnector::run " + thischan.getName() + "  nElem = " + nElem + " of " + thistype.toString());
+		    thischan.addMonitor(thistype, nElem, Monitor.VALUE | Monitor.ALARM, listener);
                   }
                   points.remove();
                 } catch (Exception f) {
@@ -497,7 +508,7 @@ public class EPICS extends ExternalSystem {
       }
       PointData pd = new PointData(itsPointName);
       try {
-        if (ev.getStatus() == CAStatus.NORMAL && ev.getDBR() != null) {
+	if (ev.getStatus().isSuccessful()) {
           pd = getPDforDBR(ev.getDBR(), itsPointName, itsPV);
         }
       } catch (Exception e) {
@@ -550,47 +561,62 @@ public class EPICS extends ExternalSystem {
   /** Decode the value from an EPICS DBR. */
   public PointData getPDforDBR(DBR dbr, String pointname, String pvname) {
     PointData pd = new PointData(pointname);
+    String[] tmp = null;
     Object newval = null;
     boolean alarm = false;
     AbsTime timestamp = new AbsTime();
+    int i;
 
     try {
       int count = dbr.getCount();
-      if (count > 1) {
-        theirLogger.warn("getPDforDBR: " + pvname + ": >1 value received");
-      }
+      //System.out.println("\ngetPDforDBR: " + pvname + " : " + count + " values received");
+      //dbr.printInfo();
       Object rawval = dbr.getValue();
+      
       // Have to switch on type, don't think there's any simpler way
       // to get the individual data as an object type.
-      if (dbr instanceof INT) {
-        newval = new Integer(((int[]) rawval)[0]);
-      } else if (dbr instanceof BYTE) {
-        newval = new Integer(((byte[]) rawval)[0]);
-      } else if (dbr instanceof SHORT) {
-        newval = new Integer(((short[]) rawval)[0]);
-      } else if (dbr instanceof FLOAT) {
-        newval = new Float(((float[]) rawval)[0]);
-      } else if (dbr instanceof DOUBLE) {
-        newval = new Double(((double[]) rawval)[0]);
-      } else if (dbr instanceof STRING) {
-        newval = ((String[]) rawval)[0];
-      } else if (dbr instanceof ENUM) {
-	newval = new Integer(((short[]) rawval)[0]);
-	if (dbr instanceof DBR_LABELS_Enum) {
-	    short idx = ((Integer)newval).shortValue();
-	    String lbl = ((DBR_LABELS_Enum)dbr).getLabels()[idx];
-	    newval = new EnumItem(lbl, idx);
+      if (dbr.isINT()) {
+        newval = new Integer(((int[])rawval)[0]);
+      } else if (dbr.isBYTE()) {
+        newval = new Integer(((byte[])rawval)[0]);
+      } else if (dbr.isSHORT()) {
+        newval = new Integer(((short[])rawval)[0]);
+      } else if (dbr.isFLOAT()) {
+        newval = new Float(((float[])rawval)[0]);
+      } else if (dbr.isDOUBLE()) {
+        newval = new Double(((double[])rawval)[0]);
+      } else if (dbr.isSTRING()) {
+        if (count <= 1) {
+	  newval = ((String[]) rawval)[0];
+	} else {  // array of string (or char) from a waveform pv
+	  StringBuffer buf = new StringBuffer();    
+	  for (i = 0; i < count; ++i) {
+	     String str = ((String[])rawval)[i];
+	     if (str.isEmpty()) break;
+	     Byte b = Byte.parseByte(str);  
+	     buf.append((char)(b.byteValue()));
+	  }
+	  newval = new String(buf);
+	  newval = ((String)newval).trim();
 	}
+	//System.out.println(pvname +"\t\"" + (String)newval + "\"");	
+      } else if (dbr.isLABELS()) {
+	short idx = ((Integer[])rawval)[0].shortValue();
+	String lbl = ((DBR_LABELS_Enum)dbr).getLabels()[idx];
+	newval = new EnumItem(lbl, idx);
+      } else if (dbr.isENUM()) {
+        newval = new Integer(((short[])rawval)[0]);
       } else {
         theirLogger.warn("getPDforDBR: " + pvname + ": Unhandled DBR type: " + dbr.getType());
       }
 
       // Check the alarm status, if information is available
-      if (dbr instanceof STS) {
+      if (dbr.isSTS()) {
         STS thissts = (STS) dbr;
         if (thissts.getSeverity() == Severity.INVALID_ALARM) {
           // Point is undefined, so data value is invalid
           newval = null;
+          //System.out.println(pvname + " INVALID_ALARM, newval set to null");
         } else if (thissts.getSeverity() != Severity.NO_ALARM) {
           // An alarm condition exists
           alarm = true;
