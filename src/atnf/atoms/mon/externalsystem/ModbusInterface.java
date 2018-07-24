@@ -78,8 +78,8 @@ public class ModbusInterface extends ExternalSystem {
       itsConnected = true;
       theirLogger.info("(" + itsHost + ":" + itsPort + "): Connected");
     } catch (Exception e) {
-      e.printStackTrace();
-      //theirLogger.warn("(" + itsHost + ":" + itsPort + "):" + e);
+      //e.printStackTrace();
+      theirLogger.warn("(" + itsHost + ":" + itsPort + "):" + e);
       itsConnected = false;
       throw e;
     }
@@ -139,8 +139,10 @@ public class ModbusInterface extends ExternalSystem {
       if (e.isEOF() || !itsConnection.isConnected()) {
         throw e;
       }
+      return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": readCoils: " + e);
+      return null;
     }
 
     return (ReadCoilsResponse) trans.getResponse();
@@ -169,8 +171,10 @@ public class ModbusInterface extends ExternalSystem {
       if (e.isEOF() || !itsConnection.isConnected()) {
         throw e;
       }
+      return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": readDiscreteInputs: " + e);
+      return null;
     }
 
     return (ReadInputDiscretesResponse) trans.getResponse();
@@ -200,8 +204,10 @@ public class ModbusInterface extends ExternalSystem {
       if (e.isEOF() || !itsConnection.isConnected()) {
         throw e;
       }
+      return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": readHoldingRegisters: " + e);
+      return null;
     }
     return (ReadMultipleRegistersResponse) trans.getResponse();
   }
@@ -229,8 +235,10 @@ public class ModbusInterface extends ExternalSystem {
       if (e.isEOF() || !itsConnection.isConnected()) {
         throw e;
       }
+      return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": readInputRegisters: " + e);
+      return null;
     }
     return (ReadInputRegistersResponse) trans.getResponse();
   }
@@ -261,6 +269,7 @@ public class ModbusInterface extends ExternalSystem {
       return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": writeSingleCoil: " + e);
+      return null;
     }
     return (WriteCoilResponse) trans.getResponse();
   }
@@ -291,6 +300,7 @@ public class ModbusInterface extends ExternalSystem {
       return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": writeSingleRegister: " + e);
+      return null;
     }
 
     return (WriteSingleRegisterResponse) trans.getResponse();
@@ -322,6 +332,7 @@ public class ModbusInterface extends ExternalSystem {
       return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": writeMultipleCoils: " + e);
+      return null;
     }
     return (WriteMultipleCoilsResponse) trans.getResponse();
   }
@@ -351,6 +362,7 @@ public class ModbusInterface extends ExternalSystem {
       return null;
     } catch (Exception e) {
       theirLogger.warn(itsHost + ":" + itsPort + ": writeMultipleRegisters: " + e);
+      return null;
     }
     return (WriteMultipleRegistersResponse) trans.getResponse();
   }
@@ -377,6 +389,9 @@ public class ModbusInterface extends ExternalSystem {
       if (tds.getNumStrings() == 4) {
         numberToRead = Integer.parseInt(tds.getString(3));
         useArray = true;
+      }
+      else {
+	useArray = false;
       }
       int UnitID = Integer.parseInt(tds.getString(0));
       int FCode = Integer.parseInt(tds.getString(1));
