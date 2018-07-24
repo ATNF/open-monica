@@ -8,6 +8,7 @@
 package atnf.atoms.mon.externalsystem;
 
 import java.io.*;
+import java.net.SocketTimeoutException;
 import atnf.atoms.mon.*;
 import atnf.atoms.mon.transaction.TransactionStrings;
 import atnf.atoms.time.RelTime;
@@ -38,6 +39,9 @@ public class ASCIISocket extends TCPSocket {
 
   /** The input stream for reading responses from the remote service. */
   protected BufferedReader itsReader = null;
+
+  /** A counter for the number of consecutive socket read timeouts. */
+  protected int timeoutCounter = 0;
 
   /** Argument must include host:port and optionally :timeout_ms */
   public ASCIISocket(String[] args) {
@@ -104,6 +108,8 @@ public class ASCIISocket extends TCPSocket {
    * default implementation sends the request string to the server and then returns all response lines as a single string.
    */
   public Object parseData(PointDescription requestor) throws Exception {
+    String result = null;
+
     // Get the Transaction which associates the point with us
     TransactionStrings thistrans = (TransactionStrings) getMyTransactions(requestor.getInputTransactions()).get(0);
 
@@ -115,28 +121,36 @@ public class ASCIISocket extends TCPSocket {
     // Substitute EOL characters
     query = query.replaceAll("\\\\n", "\n").replaceAll("\\\\r", "\r");
 
-    // Clear input buffer
-    while (itsReader.ready()) {
-      itsReader.readLine();
-    }
+    try {
+      // Clear input buffer
+      while (itsReader.ready()) {
+        itsReader.readLine();
+      }
 
-    // Send the query to the server
-    itsWriter.write(query);
-    itsWriter.flush();
+      // Send the query to the server
+      itsWriter.write(query);
+      itsWriter.flush();
 
-    // Check if the Transaction specifies the number of reply lines to expect
-    int numexpected = -1;
-    if (thistrans.getNumStrings() > 1) {
-      numexpected = Integer.parseInt(thistrans.getString(1));
-    }
+      // Check if the Transaction specifies the number of reply lines to expect
+      int numexpected = -1;
+      if (thistrans.getNumStrings() > 1) {
+        numexpected = Integer.parseInt(thistrans.getString(1));
+      }
 
-    // Read response
-    String result = itsReader.readLine() + "\n";
-    int numread = 1;
-    while (itsReader.ready() || (numexpected != -1 && numread < numexpected)) {
-      String line = itsReader.readLine() + "\n";
-      result = result + line;
-      numread++;
+      // Read response
+      result = itsReader.readLine() + "\n";
+      int numread = 1;
+      while (itsReader.ready() || (numexpected != -1 && numread < numexpected)) {
+        String line = itsReader.readLine() + "\n";
+        result = result + line;
+        numread++;
+      }
+      timeoutCounter = 0;
+    } catch (SocketTimeoutException ste) { // End device probably offline / powered-down ... no need to disconnect socket immediately
+      if (++timeoutCounter > 10) {
+        timeoutCounter = 0;
+	throw ste;
+      }
     }
 
     return result;
