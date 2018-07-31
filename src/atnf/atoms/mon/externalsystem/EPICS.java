@@ -83,13 +83,17 @@ public class EPICS extends ExternalSystem {
     // Get the JCALibrary instance.
     JCALibrary jca = JCALibrary.getInstance();
     try {
+      // Set default max_array_bytes to 21000 to cater for at least 512 epics strings (512 * 40 bytes)
+      // but allow it to be overridden by the command line.
+      int mab = jca.getPropertyAsInt("com.cosylab.epics.caj.CAJContext.max_array_bytes", 21000);
+      System.out.println("EPICS: CAJ max_array_bytes is " + mab);
       // See https://epics.anl.gov/bcda/jca/jca/2.1.2/tutorial.html#5 part 7)
       // Create the Configuration object for our context.
       DefaultConfiguration conf= new DefaultConfiguration("myContext");
       // Define the context class.
       conf.addAttribute("class", JCALibrary.CHANNEL_ACCESS_JAVA);
-      // Increase the max array length to cater for at least 512 epics strings (512 * 40 bytes)
-      conf.addAttribute("max_array_bytes", "21000");
+      // Set the max array length
+      conf.addAttribute("max_array_bytes", String.valueOf(mab));
       // Create a context with this configuration.
       itsContext = jca.createContext(conf);
       //jca.listProperties();
@@ -439,12 +443,12 @@ public class EPICS extends ExternalSystem {
 		    //theirLogger.debug("ChannelConnector: dbr type of PV " + thispv + " is " + thistype.toString());
                     // Needs to be monitored so data arrives as a specific type
 	            int nElem = thischan.getElementCount();
-		    //System.out.println("ChannelConnector::run " + thischan.getName() + "  nElem = " + nElem + " of " + thistype.toString());
+		    System.out.println("ChannelConnector::run " + thischan.getName() + "  nElem = " + nElem + " of " + thistype.toString());
 		    thischan.addMonitor(thistype, nElem, Monitor.VALUE | Monitor.ALARM, listener);
                   }
                   points.remove();
                 } catch (Exception f) {
-                  theirLogger.error("ChannelConnector: Establising Listener " + pointdesc.getFullName() + "/" + thispv + ": " + f);
+                  theirLogger.error("ChannelConnector: Establishing Listener " + pointdesc.getFullName() + "/" + thispv + ": " + f);
                 }
               }
               if (thesepoints.isEmpty()) {
