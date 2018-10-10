@@ -14,6 +14,9 @@ import atnf.atoms.mon.archiver.influx.TagExtractor;
 import atnf.atoms.mon.util.MonitorConfig;
 import atnf.atoms.time.AbsTime;
 import atnf.atoms.time.RelTime;
+import atnf.atoms.util.Angle;
+import atnf.atoms.util.HourAngle;
+import atnf.atoms.util.EnumItem;
 import org.apache.log4j.Logger;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDB.LogLevel;
@@ -25,6 +28,7 @@ import org.influxdb.dto.Pong;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.math.BigInteger;
 
 /**
  * #%L
@@ -420,7 +424,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                 ++itsUnmappedPoints;
             }
 
-            // add unit as a tag
+            // add units as a tag
             String pointUnits = pm.getUnits();
             if (pointUnits != null && pointUnits.length() > 0) {
                 seriesInfo.tags.put("units", pointUnits);
@@ -495,18 +499,34 @@ public class PointArchiverInfluxDb extends PointArchiver {
                             .tag(seriesInfo.tags);
 
                     Object pointValueObj = pointData.getData();
+
                     if (pointData.getData() instanceof Double) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).doubleValue());
                     } else if (pointData.getData() instanceof Float) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).floatValue());
+                    } else if (pointData.getData() instanceof HourAngle) {
+                        pb.addField(seriesInfo.field, ((HourAngle)pointValueObj).getValue());
+                    } else if (pointData.getData() instanceof Angle) {
+                        pb.addField(seriesInfo.field, ((Angle)pointValueObj).getValue());
                     } else if (pointData.getData() instanceof Integer) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).intValue());
                     } else if (pointData.getData() instanceof Long) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).longValue());
                     } else if (pointValueObj instanceof String) {
                         pb.addField(seriesInfo.field, (String) pointValueObj);
-                    }
-                    else {
+                    } else if (pointData.getData() instanceof Boolean) {
+                        pb.addField(seriesInfo.field, ((Boolean)pointValueObj).booleanValue());
+                    } else if (pointData.getData() instanceof Short) {
+                        pb.addField(seriesInfo.field, ((Number)pointValueObj).intValue());
+                    } else if (pointData.getData() instanceof AbsTime) {
+                        pb.addField(seriesInfo.field, ((AbsTime)pointValueObj).toString(AbsTime.Format.HEX_BAT));
+                    } else if (pointData.getData() instanceof RelTime) {
+                        pb.addField(seriesInfo.field, ((AbsTime)pointValueObj).toString(AbsTime.Format.DECIMAL_BAT));
+                    } else if (pointData.getData() instanceof BigInteger) {
+                        pb.addField(seriesInfo.field, ((BigInteger)pointValueObj).toString());
+                    } else if (pointData.getData() instanceof EnumItem) {
+                        pb.addField(seriesInfo.field, ((EnumItem)pointValueObj).toString());
+                    } else {
                         itsLogger.warn("unhandled type " + pointValueObj.getClass().getName());
                     }
                     itsCurrentBatch.point(pb.build());
