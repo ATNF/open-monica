@@ -443,7 +443,7 @@ public class EPICS extends ExternalSystem {
 		    //theirLogger.debug("ChannelConnector: dbr type of PV " + thispv + " is " + thistype.toString());
                     // Needs to be monitored so data arrives as a specific type
 	            int nElem = thischan.getElementCount();
-		    System.out.println("ChannelConnector::run " + thischan.getName() + "  nElem = " + nElem + " of " + thistype.toString());
+		    //System.out.println("ChannelConnector::run " + thischan.getName() + "  nElem = " + nElem + " of " + thistype.toString());
 		    thischan.addMonitor(thistype, nElem, Monitor.VALUE | Monitor.ALARM, listener);
                   }
                   points.remove();
