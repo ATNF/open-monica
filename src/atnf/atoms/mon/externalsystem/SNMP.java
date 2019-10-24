@@ -1,6 +1,6 @@
 package atnf.atoms.mon.externalsystem;
 
-import org.apache.log4j.Logger;
+import org.apache.log4j.*;
 import org.snmp4j.*;
 import org.snmp4j.smi.*;
 import org.snmp4j.event.*;
@@ -88,7 +88,11 @@ public class SNMP extends ExternalSystem {
 
     try {
       TransportMapping transport = new DefaultUdpTransportMapping();
-      itsSNMP = new Snmp(transport);
+      MessageDispatcher disp = new MessageDispatcherImpl();
+      disp.addMessageProcessingModel(new MPv1());
+      disp.addMessageProcessingModel(new MPv2c());
+      disp.addMessageProcessingModel(new MPv3());
+      itsSNMP = new Snmp(disp, transport);
 
       if (itsVersion == SNMPVersion.v3) {
         USM usm = new USM(SecurityProtocols.getInstance(), new OctetString(MPv3.createLocalEngineID()), 0);
@@ -218,4 +222,69 @@ public class SNMP extends ExternalSystem {
       return null;
     }
   }
+
+  public static void usage() {
+      System.out.println("\nusage: SNMP source oid1 [oid2 oid3 ...]");
+      System.out.println("\twhere\tsource comprises hostname:port:snmpVer:community");
+      System.out.println("\t\ti.e. the moniCA monitor-source name including the colons.");
+      System.out.println("\t\tIf only hostname is supplied, the defaults are:-");
+      System.out.println("\t\t\tport = 161");
+      System.out.println("\t\t\tsnmpVer = v2c");
+      System.out.println("\t\t\tcommunity = public");      
+      System.out.println("\t\toid is the snmp object id string");
+      System.out.println();
+      System.exit(1);
+  }
+
+  public static void main(String[] args) {
+
+    ResponseEvent response;
+
+    if (args.length < 2) usage();
+    // disable logging messages
+    theirLogger.setLevel(Level.OFF);
+    String[] source = {"host", "161", "v2c", "public"};
+    String[] tmp = args[0].split(":");
+    if (tmp.length < 1 || tmp.length > 4) usage();
+    for (int i = 0; i < tmp.length; ++i) {
+      source[i] = tmp[i];
+    }
+    String[] oids = new String[args.length-1];
+    for (int i = 1; i < args.length; ++i) {
+      oids[i-1] = args[i];
+    }
+
+    try {
+      SNMP snmpTest = new SNMP(source);
+      for (int i = 0; i < oids.length; ++i) {
+        // Create an OID from the string argument  
+        OID oid = new OID(oids[i]);
+        // Send the SNMP request
+        PDU pdu = DefaultPDUFactory.createPDU(snmpTest.itsTarget, PDU.GET);
+        pdu.add(new VariableBinding(oid));
+        response = snmpTest.itsSNMP.send(pdu, snmpTest.itsTarget); 
+        // Process response
+        PDU responsePDU = response.getResponse();
+        PointData newdata;  
+        if (responsePDU != null) {    
+          if (responsePDU.getErrorStatus() != SnmpConstants.SNMP_ERROR_SUCCESS || !responsePDU.get(0).getOid().equals(oid)) {
+            // Response error
+            System.out.println("ERROR: " + snmpTest.itsHostName + " PDU error status: " + responsePDU.getErrorStatus());
+          } else {
+            System.out.println("Success !");
+            newdata = new PointData(snmpTest.getName(), responsePDU.get(0).getVariable().toString());
+            System.out.println("\t" + newdata.toString() + "\n");
+          }
+        
+        }
+        else {
+          System.out.println("FAILED: Timed out !");
+        }
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  
+  }
+
 }
