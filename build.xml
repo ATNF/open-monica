@@ -8,7 +8,7 @@
   <property name="javadoc" value="javadoc"/>
   <property name="jarname" value="open-monica.jar"/>
   <property name="prefix" value="/usr/local/"/>
-  <property name="ice-version" value="3.6"/>
+  <property name="ice-version" value="3.6.3"/>
 
 
   <!-- Purge build and doc directories (but not jar file) -->
