@@ -521,7 +521,7 @@ public class PointArchiverInfluxDb extends PointArchiver {
                     } else if (pointData.getData() instanceof AbsTime) {
                         pb.addField(seriesInfo.field, ((AbsTime)pointValueObj).toString(AbsTime.Format.HEX_BAT));
                     } else if (pointData.getData() instanceof RelTime) {
-                        pb.addField(seriesInfo.field, ((AbsTime)pointValueObj).toString(AbsTime.Format.DECIMAL_BAT));
+                        pb.addField(seriesInfo.field, ((RelTime)pointValueObj).toString(RelTime.Format.DECIMAL_BAT));
                     } else if (pointData.getData() instanceof BigInteger) {
                         pb.addField(seriesInfo.field, ((BigInteger)pointValueObj).toString());
                     } else if (pointData.getData() instanceof EnumItem) {
