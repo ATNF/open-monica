@@ -17,13 +17,23 @@ import org.apache.log4j.Logger;
 import atnf.atoms.mon.*;
 import atnf.atoms.time.AbsTime;
 
+import com.zeroc.Ice.Communicator;
+import com.zeroc.Ice.ObjectImpl;
+import com.zeroc.Ice.InitializationData;
+import com.zeroc.Ice.ObjectPrx;
+import com.zeroc.Ice.ObjectAdapter;
+import com.zeroc.IceStorm.TopicManagerPrx;
+import com.zeroc.IceStorm.TopicPrx;
+import com.zeroc.IceStorm.NoSuchTopic;
+import com.zeroc.IceStorm.TopicExists;
+
 /**
  * Superclass for receiving data via messages from an IceStorm Topic. Subclasses
  * need to populate the instance field <i>itsSubscriber</i> in their
  * constructor using an instance of their implementation for the relevant Ice
  * interface. The interface implementation should call the <i>gotNewData</i>
  * method when a new message is received.
- * 
+ *
  * <P>
  * The constructor/monitor-sources.txt definition expects four arguments:
  * <ol>
@@ -34,7 +44,7 @@ import atnf.atoms.time.AbsTime;
  * <li><b>Point:</b> The name of the MoniCA point to update when messages are
  * received.
  * </ol>
- * 
+ *
  * @author David Brodrick
  */
 public class IceStormSubscriber extends ExternalSystem
@@ -49,7 +59,7 @@ public class IceStormSubscriber extends ExternalSystem
   protected String itsTopicName;
 
   /** The IceStorm Topic to subscribe to. */
-  protected IceStorm.TopicPrx itsTopic;
+  protected TopicPrx itsTopic;
 
   /** The hostname for the IceGrid Locator service. */
   protected String itsHost;
@@ -58,10 +68,10 @@ public class IceStormSubscriber extends ExternalSystem
   protected int itsPort;
 
   /** The Ice Communicator. */
-  protected Ice.Communicator itsCommunicator;
+  protected Communicator itsCommunicator;
 
   /** The actual interface implementation. */
-  protected Ice.ObjectImpl itsSubscriber;
+  protected ObjectImpl itsSubscriber;
 
   /** Constructor. */
   public IceStormSubscriber(String[] args)
@@ -101,32 +111,32 @@ public class IceStormSubscriber extends ExternalSystem
   {
     try {
       String uuid = UUID.randomUUID().toString();
-      Ice.Properties props = Ice.Util.createProperties();
+      com.zeroc.Ice.Properties props = com.zeroc.Ice.Util.createProperties();
       String locator = "IceGrid/Locator:tcp -h " + itsHost + " -p " + itsPort;
       props.setProperty("Ice.Default.Locator", locator);
       props.setProperty("Ice.IPv6", "0");
       props.setProperty("MoniCAIceStormAdapter.AdapterId", "MoniCAIceStormAdapter"+uuid);
-      props.setProperty("MoniCAIceStormAdapter.Endpoints", "tcp");      
-      Ice.InitializationData id = new Ice.InitializationData();
+      props.setProperty("MoniCAIceStormAdapter.Endpoints", "tcp");
+      InitializationData id = new InitializationData();
       id.properties = props;
-      itsCommunicator = Ice.Util.initialize(id);
+      itsCommunicator = com.zeroc.Ice.Util.initialize(id);
 
-      Ice.ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
-      IceStorm.TopicManagerPrx topicManager = IceStorm.TopicManagerPrxHelper.checkedCast(obj);
-      Ice.ObjectAdapter adapter = itsCommunicator.createObjectAdapter("MoniCAIceStormAdapter");
-      Ice.ObjectPrx proxy = adapter.addWithUUID(itsSubscriber).ice_twoway();
+      ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
+      TopicManagerPrx topicManager = TopicManagerPrx.checkedCast(obj);
+      ObjectAdapter adapter = itsCommunicator.createObjectAdapter("MoniCAIceStormAdapter");
+      ObjectPrx proxy = adapter.addWithUUID(itsSubscriber).ice_twoway();
 
       try {
         itsTopic = topicManager.retrieve(itsTopicName);
-      } catch (IceStorm.NoSuchTopic e0) {
+      } catch (NoSuchTopic e0) {
         try {
           // Create topic if it doesn't already exist
           itsTopic = topicManager.create(itsTopicName);
-        } catch (IceStorm.TopicExists e1) {
+        } catch (TopicExists e1) {
           itsTopic = topicManager.retrieve(itsTopicName);
         }
       }
-      itsTopic.subscribeAndGetPublisher(null, proxy);      
+      itsTopic.subscribeAndGetPublisher(null, proxy);
 
       adapter.activate();
       itsConnected = true;

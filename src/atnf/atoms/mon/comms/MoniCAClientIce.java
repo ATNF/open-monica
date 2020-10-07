@@ -23,9 +23,16 @@ import atnf.atoms.mon.util.RSA;
 import atnf.atoms.time.AbsTime;
 import atnf.atoms.time.RelTime;
 
+import atnf.atoms.mon.comms.MoniCAIcePrx;
+import com.zeroc.Ice.Communicator;
+import com.zeroc.Ice.InitializationData;
+import com.zeroc.Ice.ObjectPrx;
+import com.zeroc.Ice.OperationNotExistException;
+import com.zeroc.IceStorm.*;
+
 /**
  * Ice implementation of a MoniCAClient.
- * 
+ *
  * @author David Brodrick, Simon Hoyle
  */
 public class MoniCAClientIce extends MoniCAClient {
@@ -39,10 +46,10 @@ public class MoniCAClientIce extends MoniCAClient {
   protected MoniCAIcePrx itsIceClient;
 
   /** The Ice communicator used to talk with the server. */
-  protected Ice.Communicator itsCommunicator;
+  protected Communicator itsCommunicator;
 
   /** Ice properties used to create the Communicator. */
-  protected Ice.Properties itsProperties;
+  protected com.zeroc.Ice.Properties itsProperties;
 
   /** The Ice encoding version to use. 1.0 for backwards compatibility. */
   protected final String theirIceEncoding = "1.0";
@@ -56,7 +63,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Connect using the specified properties to find the MoniCA server via a locator.
    */
-  public MoniCAClientIce(Ice.Properties props) throws Exception {
+  public MoniCAClientIce(com.zeroc.Ice.Properties props) throws Exception {
     itsProperties = props;
     // Ensure the encoding is set to the appropriate version
     itsProperties.setProperty("Ice.Default.EncodingVersion", theirIceEncoding);
@@ -78,7 +85,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Return the current connection status.
-   * 
+   *
    * @return Connection status, True if connected, False if disconnected.
    */
   public boolean isConnected() {
@@ -91,7 +98,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
    /**
    * Get the names of all points (including aliases) on the system.
-   * 
+   *
    * @return Names of all points on the system.
    */
   public Vector<String> getAllPointNames() throws Exception {
@@ -117,7 +124,7 @@ public class MoniCAClientIce extends MoniCAClient {
           start = start + theirMaxNameReq;
 	  tempnames = null;
         }
-      } catch (Ice.OperationNotExistException f) {
+      } catch (OperationNotExistException f) {
         // Fall back to old method (prone to exceeded max message size if too many points)
         System.out.println("MoniCAClientIce::getAllPointNames: " + f.toString());
         tempnames = itsIceClient.getAllPointNames();
@@ -139,7 +146,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Get the point with the specified name. The populateClientFields method should be invoked on each point prior to returning the
    * result.
-   * 
+   *
    * @param pointname
    *          Point names to be retrieved.
    * @return The point definitions.
@@ -157,7 +164,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Get the points with the specified names. The populateClientFields method should be invoked on each point prior to returning the
    * result.
-   * 
+   *
    * @param pointnames
    *          Vector containing point names to be retrieved.
    * @return Vector containing all point definitions.
@@ -225,7 +232,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Get all of the points on the system.
-   * 
+   *
    * @return Vector containing all point definitions.
    */
   public Vector<PointDescription> getAllPoints() throws Exception {
@@ -254,7 +261,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
           start = start + theirMaxPointsReq;
         }
-      } catch (Ice.OperationNotExistException f) {
+      } catch (OperationNotExistException f) {
         // Fall back to old method (prone to exceeded max message size if too many points)
         PointDescriptionIce[] icepoints = itsIceClient.getAllPoints();
         res = MoniCAIceUtil.getPointDescriptionsFromIce(icepoints);
@@ -272,7 +279,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Add multiple points to the servers. This is a privileged operation which requires the user to authenticate against the server.
    * The username and password are encrypted prior to transmission over the network.
-   * 
+   *
    * @param newpoints
    *          Definitions for the new points.
    * @param username
@@ -303,7 +310,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Return the latest data for all of the named points.
-   * 
+   *
    * @param pointnames
    *          Points to obtain data for.
    * @return Vector of latest values in same order as argument.
@@ -330,7 +337,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Return the last data before the specified timestamp.
-   * 
+   *
    * @param pointnames
    *          Points to obtain data for.
    * @param t
@@ -359,7 +366,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Return the next data after the specified timestamp.
-   * 
+   *
    * @param pointnames
    *          Points to obtain data for.
    * @param t
@@ -388,7 +395,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Return archived data for the given points.
-   * 
+   *
    * @param pointnames
    *          Names of points to get data for.
    * @param start
@@ -445,7 +452,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Set new values for the specified points. This requires authentication. The username and password are encrypted prior to
    * transmission over the network.
-   * 
+   *
    * @param pointnames
    *          Names of the points to set values for.
    * @param values
@@ -511,7 +518,7 @@ public class MoniCAClientIce extends MoniCAClient {
   /**
    * Add a new SavedSetup to the server. This requires authentication to prevent inappropriate modification of the server data. The
    * username and password are encrypted prior to transmission over the network.
-   * 
+   *
    * @param setup
    *          The SavedSetup to add to the server.
    * @param username
@@ -542,7 +549,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Get all alarm points with priority >=0, whether they are alarming or not.
-   * 
+   *
    * @return List of alarms or null if none are defined.
    */
   public Vector<Alarm> getAllAlarms() throws Exception {
@@ -589,7 +596,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Get all points which are currently alarming (including acknowledged) or shelved.
-   * 
+   *
    * @return List of alarms or null if none meet the criteria.
    */
   public Vector<Alarm> getCurrentAlarms() throws Exception {
@@ -625,7 +632,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Acknowledge/deacknowledge the specified alarm points.
-   * 
+   *
    * @param pointnames
    *          The points to be acknowledged or deacknowledged.
    * @param ack
@@ -660,7 +667,7 @@ public class MoniCAClientIce extends MoniCAClient {
 
   /**
    * Shelve/deshelved the specified alarm points.
-   * 
+   *
    * @param pointnames
    *          The points to be shelved or deshelved.
    * @param shelve
@@ -760,17 +767,17 @@ public class MoniCAClientIce extends MoniCAClient {
   protected boolean connect() throws Exception {
     try {
       itsCommunicator = null;
-      Ice.ObjectPrx base = null;
+      ObjectPrx base = null;
       if (itsProperties == null) {
         // Connect directly to the specified server
-        itsCommunicator = Ice.Util.initialize();
+        itsCommunicator = com.zeroc.Ice.Util.initialize();
         // Use encoding 1.0 for backwards compatibility
         base = itsCommunicator.stringToProxy("MoniCAService -e " + theirIceEncoding + ": tcp -h " + itsHost + " -p " + itsPort + " -t 30000");
       } else {
         // Find the server via a Locator service
-        Ice.InitializationData id = new Ice.InitializationData();
+        InitializationData id = new InitializationData();
         id.properties = itsProperties;
-        itsCommunicator = Ice.Util.initialize(id);
+        itsCommunicator = com.zeroc.Ice.Util.initialize(id);
         String adaptername = itsProperties.getProperty("AdapterName");
         if (adaptername == null) {
           base = itsCommunicator.stringToProxy("MoniCAService");
@@ -778,7 +785,7 @@ public class MoniCAClientIce extends MoniCAClient {
           base = itsCommunicator.stringToProxy("MoniCAService@" + adaptername);
         }
       }
-      itsIceClient = MoniCAIcePrxHelper.checkedCast(base);
+      itsIceClient = MoniCAIcePrx.checkedCast(base);
       if (itsIceClient == null) {
         throw new Error("MoniCAClientIce.connect: Invalid proxy");
       }

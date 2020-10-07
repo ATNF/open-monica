@@ -11,7 +11,6 @@ import java.util.*;
 import java.io.*;
 
 import javax.sound.sampled.*;
-import javax.sound.*;
 import javax.swing.*;
 
 import java.awt.*;
@@ -30,12 +29,12 @@ import atnf.atoms.time.RelTime;
  * MonClientUtil is a client-side class which contains various methods to perform useful client-side operations. This class doesn't
  * really encapsulate a well defined object, but rather it ties together various pieces of functionality so that most of the useful
  * methods are available in one spot.
- * 
+ *
  * <P>
  * One of the things it does it control what server the client will connect to. This is normally done by presenting the user with a
  * dialog box, however the server name can also be specified as a property called "server", eg
  * <tt>-Dserver=monhost-nar.atnf.csiro.au</tt>.
- * 
+ *
  * @author David Brodrick, Simon Hoyle
  * @version $Id: MonClientUtil.java,v 1.9 2008/03/18 00:52:10 bro764 Exp bro764 $
  */
@@ -208,7 +207,7 @@ public class MonClientUtil {
 				}
 				port = Integer.parseInt(host.substring(host.indexOf(":") + 1));
 				host = host.substring(0, host.indexOf(":"));
-				Ice.Properties props = Ice.Util.createProperties();
+				com.zeroc.Ice.Properties props = com.zeroc.Ice.Util.createProperties();
 				props.setProperty("Ice.Default.Locator", "IceGrid/Locator:tcp -h " + host + " -p " + port);
 				props.setProperty("Ice.IPv6", "0");
 				if (adaptername != null) {
@@ -315,7 +314,7 @@ public class MonClientUtil {
 			// Elapsed time testing
 			//long start = System.nanoTime();
 			theirPointNameCache = theirServer.getAllPointNames();
-			// Populate PointSourceMap  
+			// Populate PointSourceMap
                         for (int i = 0; i < theirPointNameCache.size(); ++i) {
 			    tmp = theirPointNameCache.get(i).split("\\.", 2);
                             if (tmp.length == 2) {
@@ -324,7 +323,7 @@ public class MonClientUtil {
 				if (!theirPointSourceMap.containsKey(name)) {
 				    Vector<String> v = new Vector<String>();
 				    v.add(source);
-				    theirPointSourceMap.put(name, v);	    
+				    theirPointSourceMap.put(name, v);
 				}
 				else {
                                     Vector<String> v = (Vector<String>)theirPointSourceMap.get(name);
@@ -354,7 +353,7 @@ public class MonClientUtil {
 	/**
 	 * Return the names of all sources for each of the given points. The return Vector will be of the same length as the argument
 	 * Vector. Each entry will be an array of Strings or possibly <tt>null</tt>.
-	 * 
+	 *
 	 * @param names
 	 *          Vector containing String names for the points.
 	 * @return Vector containing an array of names for each requested point.
@@ -374,11 +373,11 @@ public class MonClientUtil {
                         Vector<String> v = (Vector<String>)theirPointSourceMap.get(searchname);
 		        if (v.size() == 0) {
 			    res.add(null);
-		        } 
+		        }
 			else {
 			    res.add(v);
 			}
-	            } 
+	            }
 	            else {
 		        res.add(null);
 		    }
@@ -493,7 +492,7 @@ public class MonClientUtil {
 
 	/**
 	 * Return a TreeUtil of the SavedSetups available for the specified class.
-	 * 
+	 *
 	 * @return TreeUtil for available SavedSetups.
 	 */
 	protected static TreeUtil getSetupTreeUtil(Class c) {
@@ -502,7 +501,7 @@ public class MonClientUtil {
 
 	/**
 	 * Return a TreeUtil of the SavedSetups available for the specified class.
-	 * 
+	 *
 	 * @return TreeUtil for available SavedSetups.
 	 */
 	protected static TreeUtil getSetupTreeUtil(String c) {
@@ -530,7 +529,7 @@ public class MonClientUtil {
 
 	/**
 	 * Get the names of all setups for the specified class.
-	 * 
+	 *
 	 * @param c
 	 *          Name of the class to obtain the setup names for.
 	 * @return Array of setup names, never <tt>null</tt>.
@@ -552,7 +551,7 @@ public class MonClientUtil {
 
 	/**
 	 * Get the named setup for the specified class.
-	 * 
+	 *
 	 * @param c
 	 *          Name of the class to obtain the setup for.
 	 * @param name
@@ -570,7 +569,7 @@ public class MonClientUtil {
 
 	/**
 	 * Get the named setup for the specified class.
-	 * 
+	 *
 	 * @param c
 	 *          Class to obtain the setup for.
 	 * @param name
@@ -838,7 +837,7 @@ public class MonClientUtil {
 
 	/**
 	 * Easy means to show a login box for authentication
-	 * 
+	 *
 	 * @param panel
 	 *          The JPanel this is being shown over
 	 * @param uname

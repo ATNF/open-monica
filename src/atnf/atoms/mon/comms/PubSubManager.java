@@ -2,17 +2,17 @@
  * Copyright (c) 2011 CSIRO Australia Telescope National Facility (ATNF) Commonwealth
  * Scientific and Industrial Research Organisation (CSIRO) PO Box 76, Epping NSW 1710,
  * Australia atnf-enquiries@csiro.au
- * 
+ *
  * This file is part of the ASKAP software distribution.
- * 
+ *
  * The ASKAP software distribution is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by the Free Software
  * Foundation; either version 2 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY
  * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
  * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with this
  * program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite
  * 330, Boston, MA 02111-1307 USA
@@ -20,8 +20,12 @@
 
 package atnf.atoms.mon.comms;
 
-import IceStorm.*;
-import Ice.Communicator;
+import com.zeroc.IceStorm.*;
+import com.zeroc.Ice.Communicator;
+import com.zeroc.Ice.Current;
+import com.zeroc.Ice.ObjectPrx;
+import com.zeroc.Ice.InitializationData;
+import com.zeroc.Ice.ObjectAdapter;
 
 import org.apache.log4j.Logger;
 
@@ -33,7 +37,7 @@ import atnf.atoms.mon.util.MonitorConfig;
 /**
  * This class creates an IceStorm topic and listens for requests from clients
  * who wish to obtain publish/subscribe monitor updates.
- * 
+ *
  * <P>
  * The process is basically as follows:
  * <ol>
@@ -46,14 +50,14 @@ import atnf.atoms.mon.util.MonitorConfig;
  * name of the topic to which the data is being published, to the subscription
  * topic.
  * </ol>
- * 
+ *
  * If the client doesn't send the keep-alive in the specified time then the
  * server will assume the client is dead and will destroy the topic, to prevent
  * buildup of stale topics in the IceStorm server. However for good practice the
  * client should also destroy the topic if it is being shutdown cleanly.
- * 
- * 
- * 
+ *
+ *
+ *
  * @author David Brodrick
  */
 public class PubSubManager {
@@ -91,11 +95,11 @@ public class PubSubManager {
 
       // Connect to the topic created by the client
       TopicManagerPrx topicManager;
-      Ice.ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
-      topicManager = IceStorm.TopicManagerPrxHelper.checkedCast(obj);
+      ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
+      topicManager = TopicManagerPrx.checkedCast(obj);
       itsTopic = topicManager.retrieve(itsTopicName);
-      Ice.ObjectPrx pub = itsTopic.getPublisher().ice_twoway();
-      itsClient = PubSubClientPrxHelper.uncheckedCast(pub);
+      ObjectPrx pub = itsTopic.getPublisher().ice_twoway();
+      itsClient = PubSubClientPrx.uncheckedCast(pub);
 
       // Get the last recorded data for each point
       PointData[] lastdata = new PointData[itsPointNames.length];
@@ -106,10 +110,10 @@ public class PubSubManager {
           lastdata[i] = new PointData(itsPointNames[i]);
         }
       }
-      
+
       // Publish the last data values
       PointDataIce[] lastdataice = MoniCAIceUtil.getPointDataAsIce(lastdata);
-      
+
       itsClient.updateData(lastdataice);
 
       // Subscribe to updates from each point
@@ -167,9 +171,9 @@ public class PubSubManager {
   /**
    * Class implementing the subscriber to the control topic.
    */
-  public class PubSubControlI extends _PubSubControlDisp {
+  public class PubSubControlI implements PubSubControl {
     /** Handle a new subscription request. */
-    public void subscribe(PubSubRequest req, Ice.Current curr) {
+    public void subscribe(PubSubRequest req, Current curr) {
       itsLogger.debug("Received new subscription request for topic " + req.topicname + " with " + req.pointnames.length + " points");
       try {
         PubSubClientInfo newclient = new PubSubClientInfo(req.topicname, req.pointnames);
@@ -182,7 +186,7 @@ public class PubSubManager {
     }
 
     /** Cancel activity on the specified topic */
-    public void unsubscribe(String topicname, Ice.Current curr) {
+    public void unsubscribe(String topicname, Current curr) {
       synchronized (itsClients) {
         PubSubClientInfo client = itsClients.get(topicname);
         if (client != null) {
@@ -196,7 +200,7 @@ public class PubSubManager {
     }
 
     /** Record that the specified topic is still active. */
-    public void keepalive(String topicname, Ice.Current curr) {
+    public void keepalive(String topicname, Current curr) {
       //itsLogger.debug("Received keep-alive for topic " + topicname);
       synchronized (itsClients) {
         PubSubClientInfo thisclient = itsClients.get(topicname);
@@ -315,18 +319,18 @@ public class PubSubManager {
     try {
       // Make Communicator
       disconnect();
-      Ice.Properties props = Ice.Util.createProperties();
+      com.zeroc.Ice.Properties props = com.zeroc.Ice.Util.createProperties();
       String locator = "IceGrid/Locator:tcp -h " + itsHost + " -p " + itsPort;
       props.setProperty("Ice.Default.Locator", locator);
       props.setProperty("Ice.IPv6", "0");
-      Ice.InitializationData id = new Ice.InitializationData();
+      InitializationData id = new InitializationData();
       id.properties = props;
-      itsCommunicator = Ice.Util.initialize(id);
+      itsCommunicator = com.zeroc.Ice.Util.initialize(id);
 
       // Obtain the topic or create
       TopicManagerPrx topicManager;
-      Ice.ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
-      topicManager = IceStorm.TopicManagerPrxHelper.checkedCast(obj);
+      ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
+      topicManager = TopicManagerPrx.checkedCast(obj);
       try {
         itsControlTopic = topicManager.retrieve(itsControlTopicName);
       } catch (NoSuchTopic e) {
@@ -337,9 +341,9 @@ public class PubSubManager {
         }
       }
 
-      Ice.ObjectAdapter adapter = itsCommunicator.createObjectAdapterWithEndpoints("", "tcp");
+      ObjectAdapter adapter = itsCommunicator.createObjectAdapterWithEndpoints("", "tcp");
       PubSubControlI monitor = new PubSubControlI();
-      Ice.ObjectPrx proxy = adapter.addWithUUID(monitor).ice_twoway();
+      ObjectPrx proxy = adapter.addWithUUID(monitor).ice_twoway();
       itsControlTopic.subscribeAndGetPublisher(null, proxy);
       adapter.activate();
     } catch (Exception e) {

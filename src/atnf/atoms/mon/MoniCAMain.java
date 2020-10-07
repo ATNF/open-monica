@@ -17,9 +17,11 @@ import atnf.atoms.mon.util.*;
 import atnf.atoms.mon.archiver.*;
 import atnf.atoms.mon.comms.*;
 
+import com.zeroc.Ice.ObjectAdapter;
+
 /**
  * Top-level class with methods for starting and stopping MoniCA.
- * 
+ *
  * @author David Brodrick
  */
 public class MoniCAMain {
@@ -33,16 +35,16 @@ public class MoniCAMain {
    * The ICE Adapter to be used for initialising the ICE server interface. This is optional, if left as null then a new adapter will
    * be created using configuration parameters.
    */
-  private static Ice.ObjectAdapter theirICEAdapter = null;
+  private static ObjectAdapter theirICEAdapter = null;
 
   /** Specify the ICE Communicator to be used by the ICE server interface. */
-  public static void setICEAdapter(Ice.ObjectAdapter a) {
+  public static void setICEAdapter(ObjectAdapter a) {
     theirICEAdapter = a;
   }
 
   /**
    * Stop MoniCA and free resources.
-   * 
+   *
    * @return True if successfully stopped, False if a problem was encountered.
    */
   public static boolean stop() {
@@ -53,7 +55,7 @@ public class MoniCAMain {
 
   /**
    * Create all of the ExternalSystems from whichever configuration resources are available.
-   * 
+   *
    * @return True if successful, False if there was a fatal error.
    */
   private static boolean createExternalSystems() {
@@ -122,7 +124,7 @@ public class MoniCAMain {
 
   /**
    * Create all of the PointDescriptions from whichever configuration resources are available.
-   * 
+   *
    * @return True if successful, False if there was a fatal error.
    */
   private static boolean createPoints() {
@@ -193,7 +195,7 @@ public class MoniCAMain {
         }
       }
     }
-    
+
     //Create all of the server-side fields for the points
     PointDescription[] allpoints = PointDescription.getAllUniquePoints();
     for (PointDescription point : allpoints) {
@@ -217,7 +219,7 @@ public class MoniCAMain {
 
   /**
    * Create all of the SavedSetups from whichever configuration resources are available.
-   * 
+   *
    * @return True if successful, False if there was a fatal error.
    */
   private static boolean createSetups() {
@@ -306,7 +308,7 @@ public class MoniCAMain {
 
   /**
    * Start MoniCA.
-   * 
+   *
    * @return True if successfully stopped, False if a problem was encountered.
    */
   public static boolean start() {

@@ -14,19 +14,27 @@ import java.util.SortedMap;
 import java.util.Vector;
 import java.util.Date;
 
-import Ice.Current;
 import atnf.atoms.mon.*;
 import atnf.atoms.mon.util.MonitorConfig;
 import atnf.atoms.mon.util.RADIUSAuthenticator;
 import atnf.atoms.time.*;
 import org.apache.log4j.Logger;
 
+import atnf.atoms.mon.comms.MoniCAIce;
+import com.zeroc.Ice.Current;
+import com.zeroc.Ice.ObjectAdapter;
+import com.zeroc.Ice.Communicator;
+import com.zeroc.Ice.InitializationData;
+
+
 /**
  * Concrete implementation of the Ice server for MoniCA.
- * 
+ *
  * @author David Brodrick
  */
-public final class MoniCAIceI extends _MoniCAIceDisp {
+public final class MoniCAIceI implements MoniCAIce {
+  private String _name;
+
   /** The currently running server. */
   protected static MoniCAIceServerThread theirServer = null;
 
@@ -45,11 +53,18 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
     }
   }
 
-  public MoniCAIceI() {
+  public MoniCAIceI(String name) {
+    _name = name;
+  }
+
+  @Override
+  public String name(Current current)
+  {
+    return _name;
   }
 
   /** Add the new points to the system. */
-  public boolean addPoints(PointDescriptionIce[] newpoints, String encname, String encpass, Ice.Current __current) {
+  public boolean addPoints(PointDescriptionIce[] newpoints, String encname, String encpass, Current __current) {
     // Check user's credentials
     String authuser = checkAuth(encname, encpass, getRemoteHost(__current));
     if (authuser == null) {
@@ -63,12 +78,12 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Get the names of all points on the system (including aliases). */
-  public String[] getAllPointNames(Ice.Current __current) {
+  public String[] getAllPointNames(Current __current) {
     return PointDescription.getAllPointNames();
   }
 
   /** Get the requested range of names of all points on the system (including aliases). */
-  public String[] getAllPointNamesChunk(int start, int num, Ice.Current __current) {
+  public String[] getAllPointNamesChunk(int start, int num, Current __current) {
     String[] allnames = PointDescription.getAllPointNames();
     String[] res;
     if (start < 0 || start >= allnames.length) {
@@ -85,14 +100,14 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Get all unique points on the system. */
-  public PointDescriptionIce[] getAllPoints(Ice.Current __current) {
+  public PointDescriptionIce[] getAllPoints(Current __current) {
     // Get all unique points
     PointDescription[] points = PointDescription.getAllUniquePoints();
     return MoniCAIceUtil.getPointDescriptionsAsIce(points);
   }
 
   /** Get the requested range of all unique points on the system. */
-  public PointDescriptionIce[] getAllPointsChunk(int start, int num, Ice.Current __current) {
+  public PointDescriptionIce[] getAllPointsChunk(int start, int num, Current __current) {
     PointDescriptionIce[] res;
     PointDescription[] allpoints = PointDescription.getAllUniquePoints();
 
@@ -111,7 +126,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the definitions for the specified points. */
-  public PointDescriptionIce[] getPoints(String[] names, Ice.Current __current) {
+  public PointDescriptionIce[] getPoints(String[] names, Current __current) {
     PointDescriptionIce[] temp = new PointDescriptionIce[names.length];
     int numfound = 0;
     for (int i = 0; i < names.length; i++) {
@@ -139,7 +154,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Add the new setup to the system. */
-  public boolean addSetup(String setup, String encname, String encpass, Ice.Current __current) {
+  public boolean addSetup(String setup, String encname, String encpass, Current __current) {
     // Check user's credentials
     String authuser = checkAuth(encname, encpass, getRemoteHost(__current));
     if (authuser == null) {
@@ -153,7 +168,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the string representation of all saved setups stored on the server. */
-  public String[] getAllSetups(Ice.Current __current) {
+  public String[] getAllSetups(Current __current) {
     SavedSetup[] allsetups = SavedSetup.getAllSetups();
     if (allsetups == null) {
       allsetups = new SavedSetup[0];
@@ -166,7 +181,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return historical data for the specified points. */
-  public PointDataIce[][] getArchiveData(String[] names, long start, long end, long maxsamples, Ice.Current __current) {
+  public PointDataIce[][] getArchiveData(String[] names, long start, long end, long maxsamples, Current __current) {
     AbsTime absstart = AbsTime.factory(start);
     AbsTime absend = AbsTime.factory(end);
     PointDataIce[][] res = new PointDataIce[names.length][];
@@ -194,7 +209,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the latest values for the given points. */
-  public PointDataIce[] getData(String[] names, Ice.Current __current) {
+  public PointDataIce[] getData(String[] names, Current __current) {
     PointDataIce[] temp = new PointDataIce[names.length];
     for (int i = 0; i < names.length; i++) {
       checkPoint(names[i], __current);
@@ -212,7 +227,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the last values before the given time for the given points. */
-  public PointDataIce[] getBefore(String[] names, long t, Ice.Current __current) {
+  public PointDataIce[] getBefore(String[] names, long t, Current __current) {
     PointDataIce[] temp = new PointDataIce[names.length];
     for (int i = 0; i < names.length; i++) {
       checkPoint(names[i], __current);
@@ -230,7 +245,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the next values after the given time for the given points. */
-  public PointDataIce[] getAfter(String[] names, long t, Ice.Current __current) {
+  public PointDataIce[] getAfter(String[] names, long t, Current __current) {
     PointDataIce[] temp = new PointDataIce[names.length];
     for (int i = 0; i < names.length; i++) {
       checkPoint(names[i], __current);
@@ -248,7 +263,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Set new values for the specified points. */
-  public boolean setData(String[] names, PointDataIce[] rawvalues, String encname, String encpass, Ice.Current __current) {
+  public boolean setData(String[] names, PointDataIce[] rawvalues, String encname, String encpass, Current __current) {
     if (names.length != rawvalues.length) {
       return false;
     }
@@ -354,7 +369,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   };
 
   /** Return the key and modulus required to send encrypted data to the server. */
-  public String[] getEncryptionInfo(Ice.Current __current) {
+  public String[] getEncryptionInfo(Current __current) {
     String[] a = new String[2];
     a[0] = KeyKeeper.getExponent();
     a[1] = KeyKeeper.getModulus();
@@ -362,11 +377,11 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Return the current time on the server. */
-  public long getCurrentTime(Ice.Current __current) {
+  public long getCurrentTime(Current __current) {
     return (new AbsTime()).getValue();
   }
 
-  public dUTCEntry[] getLeapSeconds(Ice.Current __current) {
+  public dUTCEntry[] getLeapSeconds(Current __current) {
     SortedMap<Date, Integer> leapseconds = DUTC.getLeapSeconds();
     dUTCEntry[] res = new dUTCEntry[leapseconds.size()];
     Object[] dates = leapseconds.keySet().toArray();
@@ -394,7 +409,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Check if the point is valid and log appropriate messages if it is not. */
-  private void checkPoint(String name, Ice.Current __current) {
+  private void checkPoint(String name, Current __current) {
     int type = PointDescription.checkPointNameType(name);
     if (type < 0) {
       theirLogger.debug("Request for non-existent point \"" + name + "\" from " + getRemoteInfo(__current));
@@ -404,7 +419,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Get the remote clients IP. */
-  private String getRemoteHost(Ice.Current __current) {
+  private String getRemoteHost(Current __current) {
     String temp = __current.con.toString();
     temp = temp.substring(temp.indexOf('\n') + 1);
     temp = temp.substring(temp.indexOf('=') + 1);
@@ -413,7 +428,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Get the remote clients IP/port. */
-  private String getRemoteInfo(Ice.Current __current) {
+  private String getRemoteInfo(Current __current) {
     String temp = __current.con.toString();
     temp = temp.substring(temp.indexOf('\n') + 1);
     temp = temp.substring(temp.indexOf('=') + 1).trim();
@@ -426,7 +441,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
   }
 
   /** Start the server using the specified adapter. */
-  public static void startIceServer(Ice.ObjectAdapter a) {
+  public static void startIceServer(ObjectAdapter a) {
     if (theirServer != null) {
       theirServer.shutdown();
     }
@@ -455,7 +470,7 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
     protected static String theirServiceName = "MoniCAService";
 
     /** The adapter to start the server with. */
-    protected Ice.ObjectAdapter itsAdapter = null;
+    protected ObjectAdapter itsAdapter = null;
 
     /** Logger. */
     protected Logger itsLogger = Logger.getLogger(this.getClass().getName());
@@ -491,16 +506,16 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
 
   /** Start a new thread to run the server using an existing adapter. */
   public static class MoniCAIceServerThreadAdapter extends MoniCAIceServerThread {
-    public MoniCAIceServerThreadAdapter(Ice.ObjectAdapter a) {
+    public MoniCAIceServerThreadAdapter(ObjectAdapter a) {
       super();
       itsAdapter = a;
     }
 
     public void run() {
-      Ice.Communicator ic = null;
+      Communicator ic = null;
       try {
         ic = itsAdapter.getCommunicator();
-        Ice.Object object = new MoniCAIceI();
+        com.zeroc.Ice.Object object = new MoniCAIceI();
         itsAdapter.add(object, ic.stringToIdentity(theirServiceName));
         ic.waitForShutdown();
       } catch (Exception e) {
@@ -535,16 +550,16 @@ public final class MoniCAIceI extends _MoniCAIceDisp {
     }
 
     public void run() {
-      Ice.Communicator ic = null;
+      Communicator ic = null;
       try {
         // Need to create a new adapter
-        Ice.Properties props = Ice.Util.createProperties();
+        com.zeroc.Ice.Properties props = com.zeroc.Ice.Util.createProperties();
         props.setProperty("Ice.IPv6", "0");
-        Ice.InitializationData id = new Ice.InitializationData();
+        InitializationData id = new InitializationData();
         id.properties = props;
-        ic = Ice.Util.initialize(id);
+        ic = com.zeroc.Ice.Util.initialize(id);
         itsAdapter = ic.createObjectAdapterWithEndpoints("MoniCAIceAdapter", "tcp -p " + itsPort);
-        Ice.Object object = new MoniCAIceI();
+        com.zeroc.Ice.Object object = new MoniCAIceI();
         itsAdapter.add(object, ic.stringToIdentity(theirServiceName));
         itsAdapter.activate();
         ic.waitForShutdown();

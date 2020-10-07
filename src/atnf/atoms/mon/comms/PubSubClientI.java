@@ -2,26 +2,23 @@
  * Copyright (c) 2011 CSIRO Australia Telescope National Facility (ATNF) Commonwealth
  * Scientific and Industrial Research Organisation (CSIRO) PO Box 76, Epping NSW 1710,
  * Australia atnf-enquiries@csiro.au
- * 
+ *
  * This file is part of the ASKAP software distribution.
- * 
+ *
  * The ASKAP software distribution is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by the Free Software
  * Foundation; either version 2 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT ANY
  * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
  * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with this
  * program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite
  * 330, Boston, MA 02111-1307 USA
  */
 
 package atnf.atoms.mon.comms;
-
-import IceStorm.*;
-import Ice.Communicator;
 
 import org.apache.log4j.Logger;
 
@@ -30,10 +27,18 @@ import atnf.atoms.time.*;
 import atnf.atoms.mon.*;
 import atnf.atoms.mon.util.MonitorConfig;
 
+import com.zeroc.Ice.Current;
+import com.zeroc.Ice.Communicator;
+import com.zeroc.Ice.InitializationData;
+import com.zeroc.Ice.ObjectPrx;
+import com.zeroc.Ice.ObjectAdapter;
+
+import com.zeroc.IceStorm.*;
+
 /**
  * @author David Brodrick
  */
-public class PubSubClientI extends _PubSubClientDisp {
+public class PubSubClientI implements PubSubClient {
     /** Name of the topic we receive updates on. */
     protected String itsTopicName;
 
@@ -99,23 +104,23 @@ public class PubSubClientI extends _PubSubClientDisp {
     protected void connect() throws Exception
     {
         try {
-            Ice.Properties props = Ice.Util.createProperties();
+            com.zeroc.Ice.Properties props = com.zeroc.Ice.Util.createProperties();
             String locator = "IceGrid/Locator:tcp -h " + itsHost + " -p " + itsPort;
             props.setProperty("Ice.Default.Locator", locator);
             props.setProperty("Ice.IPv6", "0");
-            Ice.InitializationData id = new Ice.InitializationData();
+            InitializationData id = new InitializationData();
             id.properties = props;
-            itsCommunicator = Ice.Util.initialize(id);
+            itsCommunicator = com.zeroc.Ice.Util.initialize(id);
 
             // Obtain the topic or create
             TopicManagerPrx topicManager;
-            Ice.ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
-            topicManager = IceStorm.TopicManagerPrxHelper.checkedCast(obj);
+            ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
+            topicManager = TopicManagerPrx.checkedCast(obj);
 
             itsControlTopic = topicManager.retrieve(itsControlTopicName);
 
-            Ice.ObjectPrx pub = itsControlTopic.getPublisher().ice_twoway();
-            itsPubSubControl = PubSubControlPrxHelper.uncheckedCast(pub);
+            ObjectPrx pub = itsControlTopic.getPublisher().ice_twoway();
+            itsPubSubControl = PubSubControlPrx.uncheckedCast(pub);
 
             itsLogger.debug("Connect to control topic okay");
         } catch (Exception e) {
@@ -129,8 +134,8 @@ public class PubSubClientI extends _PubSubClientDisp {
     {
         // Obtain the topic or create
         TopicManagerPrx topicManager;
-        Ice.ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
-        topicManager = IceStorm.TopicManagerPrxHelper.checkedCast(obj);
+        ObjectPrx obj = itsCommunicator.stringToProxy("IceStorm/TopicManager@IceStorm.TopicManager");
+        topicManager = TopicManagerPrx.checkedCast(obj);
 
         // Create a unique topic name
         // TODO:
@@ -146,8 +151,8 @@ public class PubSubClientI extends _PubSubClientDisp {
             }
         }
 
-        Ice.ObjectAdapter adapter = itsCommunicator.createObjectAdapterWithEndpoints("", "tcp");
-        Ice.ObjectPrx proxy = adapter.addWithUUID(this).ice_twoway();
+        ObjectAdapter adapter = itsCommunicator.createObjectAdapterWithEndpoints("", "tcp");
+        ObjectPrx proxy = adapter.addWithUUID(this).ice_twoway();
         itsTopic.subscribeAndGetPublisher(null, proxy);
 
         adapter.activate();
@@ -160,7 +165,7 @@ public class PubSubClientI extends _PubSubClientDisp {
     }
 
     /** Callback from Ice when new data is published on our topic. */
-    public void updateData(PointDataIce[] newdataice, Ice.Current curr)
+    public void updateData(PointDataIce[] newdataice, Current curr)
     {
         Vector<PointData> newdata = MoniCAIceUtil.getPointDataFromIce(newdataice);
         for (int i = 0; i < newdata.size(); i++) {
