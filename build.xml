@@ -8,7 +8,7 @@
   <property name="javadoc" value="javadoc"/>
   <property name="jarname" value="open-monica.jar"/>
   <property name="prefix" value="/usr/local/"/>
-  <property name="ice-version" value="3.6.3"/>
+  <property name="ice-version" value="3.7.2"/>
 
 
   <!-- Purge build and doc directories (but not jar file) -->
@@ -28,7 +28,7 @@
     </copy>
 
     <mkdir dir="${output}"/>
-    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">            
+    <javac destdir="${output}" debug="true" includeantruntime="false">
       <compilerarg value="-Xlint:unchecked"/>
       <src path="${src}"/>            
       <classpath refid="3rdParty"/>

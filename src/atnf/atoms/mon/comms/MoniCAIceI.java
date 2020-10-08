@@ -33,8 +33,6 @@ import com.zeroc.Ice.InitializationData;
  * @author David Brodrick
  */
 public final class MoniCAIceI implements MoniCAIce {
-  private String _name;
-
   /** The currently running server. */
   protected static MoniCAIceServerThread theirServer = null;
 
@@ -53,14 +51,7 @@ public final class MoniCAIceI implements MoniCAIce {
     }
   }
 
-  public MoniCAIceI(String name) {
-    _name = name;
-  }
-
-  @Override
-  public String name(Current current)
-  {
-    return _name;
+  public MoniCAIceI() {
   }
 
   /** Add the new points to the system. */

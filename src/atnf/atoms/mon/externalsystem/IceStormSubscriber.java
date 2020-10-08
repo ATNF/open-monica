@@ -18,7 +18,6 @@ import atnf.atoms.mon.*;
 import atnf.atoms.time.AbsTime;
 
 import com.zeroc.Ice.Communicator;
-import com.zeroc.Ice.ObjectImpl;
 import com.zeroc.Ice.InitializationData;
 import com.zeroc.Ice.ObjectPrx;
 import com.zeroc.Ice.ObjectAdapter;
@@ -71,7 +70,7 @@ public class IceStormSubscriber extends ExternalSystem
   protected Communicator itsCommunicator;
 
   /** The actual interface implementation. */
-  protected ObjectImpl itsSubscriber;
+  protected com.zeroc.Ice.Object itsSubscriber;
 
   /** Constructor. */
   public IceStormSubscriber(String[] args)
