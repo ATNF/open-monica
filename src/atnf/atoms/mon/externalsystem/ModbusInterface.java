@@ -562,7 +562,7 @@ public class ModbusInterface extends ExternalSystem {
     System.err.println("where:");
     System.err.println("  Hostname: Modbus host IP address");
     System.err.println("  Port: Modbus port (usually 502)");
-    System.err.println("  ID: Modbus ID (1-125)");
+    System.err.println("  ID: Modbus ID (1-255)");
     System.err.println("  Type: 1:ReadCoils, 2:ReadDiscreteInputs, 3:ReadHoldingRegisters, 4:ReadInputRegisters");
     System.err.println("  Start: Modbus Start Address (0-65535)");
     System.err.println("  Count: Number of points to read (optional). Default:1 (1-125)");
@@ -588,7 +588,7 @@ public class ModbusInterface extends ExternalSystem {
       }
 
       int UnitID = Integer.parseInt(args[2]);
-      if (UnitID < 1 || UnitID > 125)
+      if (UnitID < 1 || UnitID > 255)
         usage();
       int FCode = Integer.parseInt(args[3]);
       if (FCode < 1 || FCode > 4)
