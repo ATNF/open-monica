@@ -14,7 +14,7 @@ import atnf.atoms.mon.*;
  * 
  * Requires three arguments:
  * <ol>
- * <li><b>Order:</b> Determines the byte order (current ignored, set to "0").
+ * <li><b>Order:</b> Determines the order to read in characters from each array element ("0" = right to left, "1" = left to right).
  * <li><b>Start Index:</b> The start index of the string in the input array of modbus registers.
  * <li><b>Length:</b> The number of consecutive modbus registers which contain the string data.
  * </ol>
@@ -23,6 +23,7 @@ import atnf.atoms.mon.*;
  **/
 public class TranslationBytesToString extends Translation {
 
+  private int itsOrder;
   private int itsStartIndex;
   private int itsLength;
 
@@ -32,6 +33,7 @@ public class TranslationBytesToString extends Translation {
     if (init.length != 3) {
       throw new IllegalArgumentException("TranslationBytesToString: Requires three arguments");
     } else {
+      itsOrder = Integer.parseInt(init[0]);
       itsStartIndex = Integer.parseInt(init[1]);
       itsLength = Integer.parseInt(init[2]);
     }
@@ -58,13 +60,27 @@ public class TranslationBytesToString extends Translation {
     String strval = "";
     for (int i = 0; i < itsLength && itsStartIndex + i < array.length; i++) {
       Long thisreg = ((Number) array[itsStartIndex + i]).longValue();
-      for (int j = 0; j < 64; j += 8) {
-        // Convert this byte into a string character
-        byte thisbyte = (byte) ((thisreg >> j) & 0xFF);
-        if (thisbyte != 0) {
-          strval += (char) thisbyte;
-        }
+      
+      switch (itsOrder) {
+        case 0:  // Contents of each array element are read right to left
+          for (int j = 0; j < 64; j += 8) {
+            // Convert this byte into a string character
+            byte thisbyte = (byte) ((thisreg >> j) & 0xFF);
+            if (thisbyte != 0) {
+              strval += (char) thisbyte;
+            }
+          }
+        case 1:  // Contents of each array element are read left to right
+          for (int j = 56; j >= 0; j -= 8) {
+            // Convert this byte into a string character
+            byte thisbyte = (byte) ((thisreg >> j) & 0xFF);
+            if (thisbyte != 0) {
+              strval += (char) thisbyte;
+            }
+          }
+        default:  // invalid order value
       }
+      
     }
     // Convert to double and set point to return
     res.setData(strval);
