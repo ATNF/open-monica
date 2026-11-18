@@ -147,6 +147,13 @@ public class PointArchiverInfluxDb extends PointArchiver {
 	*/
     private int itsUnmappedPoints = 0;
 
+    /**
+     * Points for which a non-finite (NaN/Infinity) value has already been
+     * logged at WARN level, so the warning is only given once per point.
+     */
+    private final Set<PointDescription> itsNonFiniteWarned =
+            Collections.synchronizedSet(new HashSet<PointDescription>());
+
 	/**
 	* points per second sent to InfluxDB
 	*/
@@ -393,6 +400,22 @@ public class PointArchiverInfluxDb extends PointArchiver {
      * @param pm The point whos data we wish to archive.
      * @param pd Vector of data to be archived.
      */
+    /**
+     * True if the value is a floating-point type (Double, Float, or an Angle,
+     * which is written as its double value) holding NaN or +/-Infinity.
+     */
+    private static boolean isNonFinite(Object value) {
+        double d;
+        if (value instanceof Double || value instanceof Float) {
+            d = ((Number) value).doubleValue();
+        } else if (value instanceof Angle) {
+            d = ((Angle) value).getValue();
+        } else {
+            return false;
+        }
+        return Double.isNaN(d) || Double.isInfinite(d);
+    }
+
     protected void saveNow(PointDescription pm, Vector<PointData> pd) {
         if (itsShuttingDown) {
             return;
@@ -499,6 +522,18 @@ public class PointArchiverInfluxDb extends PointArchiver {
                             .tag(seriesInfo.tags);
 
                     Object pointValueObj = pointData.getData();
+
+                    // Influx line protocol cannot represent NaN or Infinity, and
+                    // one such value makes the server reject the whole batch
+                    if (isNonFinite(pointValueObj)) {
+                        if (itsNonFiniteWarned.add(pm)) {
+                            itsLogger.warn("not archiving non-finite value " + pointValueObj + " for " + pm.getFullName()
+                                    + " (Influx cannot store it); further occurrences for this point logged at DEBUG");
+                        } else {
+                            itsLogger.debug("not archiving non-finite value " + pointValueObj + " for " + pm.getFullName());
+                        }
+                        continue;
+                    }
 
                     if (pointData.getData() instanceof Double) {
                         pb.addField(seriesInfo.field, ((Number) pointValueObj).doubleValue());
