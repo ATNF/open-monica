@@ -1,3 +1,8 @@
 .idea
 open-monica.iml
+open-monica*.jar
+3rdParty/*ice*-*.jar
 out
+build/
+build-fullcream/
+clientlibs/restlet/bin/*.properties

@@ -9,13 +9,23 @@
   <property name="jarname" value="open-monica.jar"/>
   <property name="prefix" value="/usr/local/"/>
   <property name="ice-version" value="3.6.3"/>
+  <!-- Self-contained jar built by the fullcream target (override with -Dfullcreamname=...) -->
+  <property name="fullcreamname" value="${jarname}"/>
+  <!-- GUI client jar built by the fullcream target (override with -Dclientjarname=...) -->
+  <property name="clientjarname" value="open-monica-client.jar"/>
+  <!-- Directory holding the config files built into the GUI client jar, see
+       client-config (override with e.g. -Dclientconfdir=../runtime/conf) -->
+  <property name="clientconfdir" value="default-files"/>
+  <property name="fullcream-work" value="build-fullcream"/>
 
 
-  <!-- Purge build and doc directories (but not jar file) -->
+  <!-- Purge build and doc directories, and the server and client jar files -->
   <target name="clean">
     <delete dir="${output}"/>
     <delete dir="${javadoc}"/>
+    <delete dir="${fullcream-work}"/>
     <delete file="${jarname}"/>
+    <delete file="${clientjarname}"/>
   </target>
   
   
@@ -28,7 +38,7 @@
     </copy>
 
     <mkdir dir="${output}"/>
-    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.6" source="1.6">            
+    <javac destdir="${output}" debug="true" includeantruntime="false" target="1.8" source="1.8">            
       <compilerarg value="-Xlint:unchecked"/>
       <src path="${src}"/>            
       <classpath refid="3rdParty"/>
@@ -56,9 +66,115 @@
   </target>
 
 
-  <!-- Install the jar files to a run-time directory -->
-  <target name="install" depends="jar">
-    <!-- Copy jar files to lib area -->
+  <!-- Build self-contained jars with their 3rdParty dependencies unpacked
+       into them, so they run without the 3rdParty directory:
+         ${fullcreamname} - server, with all 3rdParty jars (fullcream-libs)
+         ${clientjarname} - GUI client, with only the jars it needs (client-libs)
+       Only the Ice jars for ${ice-version} are included. -->
+  <target name="fullcream" depends="compile">
+    <fail message="Client config files missing from ${clientconfdir}, see client-config">
+      <condition>
+        <resourcecount when="greater" count="0">
+          <restrict>
+            <filelist refid="client-config"/>
+            <not><exists/></not>
+          </restrict>
+        </resourcecount>
+      </condition>
+    </fail>
+    <delete dir="${fullcream-work}"/>
+    <mkdir dir="${fullcream-work}/classes"/>
+    <javac srcdir="buildtools" destdir="${fullcream-work}/classes" includeantruntime="false">
+      <classpath refid="fullcream-libs"/>
+    </javac>
+
+    <build-fullcream destfile="${fullcreamname}" mainclass="atnf.atoms.mon.MoniCAMain" libs="fullcream-libs"/>
+    <build-fullcream destfile="${clientjarname}" mainclass="atnf.atoms.mon.gui.MonFrame" libs="client-libs">
+      <extra-files>
+        <filelist refid="client-config"/>
+      </extra-files>
+    </build-fullcream>
+  </target>
+
+
+  <!-- Build one self-contained jar from the open-monica classes plus the jars
+       in the path with id @{libs}, and any files given in <extra-files>.
+       Expects the MergeJarMetadata helper to have been compiled into
+       ${fullcream-work}/classes. -->
+  <macrodef name="build-fullcream">
+    <attribute name="destfile"/>
+    <attribute name="mainclass"/>
+    <attribute name="libs"/>
+    <element name="extra-files" optional="true"/>
+    <sequential>
+      <!-- Merge META-INF files that would otherwise collide between jars -->
+      <mkdir dir="${fullcream-work}/@{libs}"/>
+      <java classname="MergeJarMetadata" fork="true" failonerror="true">
+        <classpath>
+          <pathelement location="${fullcream-work}/classes"/>
+          <path refid="fullcream-libs"/>
+        </classpath>
+        <arg file="${fullcream-work}/@{libs}"/>
+        <arg pathref="@{libs}"/>
+      </java>
+
+      <jar destfile="@{destfile}" duplicate="preserve">
+        <manifest>
+          <attribute name="Main-Class" value="@{mainclass}"/>
+          <attribute name="Multi-Release" value="true"/>
+        </manifest>
+        <fileset dir="${output}"/>
+        <fileset dir="${config}"/>
+        <extra-files/>
+        <fileset dir="${src}" casesensitive="no">
+          <include name="**/*.gif"/>
+          <include name="**/*.png"/>
+          <include name="**/*.wav"/>
+          <include name="**/*.au"/>
+        </fileset>
+        <fileset dir="${fullcream-work}/@{libs}"/>
+        <restrict>
+          <not>
+            <or>
+              <name name="META-INF/MANIFEST.MF"/>
+              <name name="META-INF/INDEX.LIST"/>
+              <name name="META-INF/*.SF"/>
+              <name name="META-INF/*.RSA"/>
+              <name name="META-INF/*.DSA"/>
+              <name name="META-INF/*.EC"/>
+              <name name="**/module-info.class"/>
+              <name name="META-INF/services/*"/>
+              <name name="META-INF/org/apache/logging/log4j/core/config/plugins/Log4j2Plugins.dat"/>
+              <name name="META-INF/LICENSE*" casesensitive="false"/>
+              <name name="META-INF/NOTICE*" casesensitive="false"/>
+              <name name="META-INF/DEPENDENCIES*" casesensitive="false"/>
+            </or>
+          </not>
+          <archives>
+            <zips>
+              <path refid="@{libs}"/>
+            </zips>
+          </archives>
+        </restrict>
+      </jar>
+    </sequential>
+  </macrodef>
+
+
+  <!-- Install only the full-cream server and client jars to ${libdir}
+       (default ${prefix}/lib, override with -Dlibdir=... or -Dprefix=...) -->
+  <target name="install-fullcream" depends="fullcream">
+    <property name="libdir" value="${prefix}/lib"/>
+    <mkdir dir="${libdir}"/>
+    <copy file="${fullcreamname}" todir="${libdir}"/>
+    <copy file="${clientjarname}" todir="${libdir}"/>
+  </target>
+
+
+  <!-- Install only the jar file and its 3rdParty jars to ${libdir} (default
+       ${prefix}/lib, override with -Dlibdir=... or -Dprefix=...), e.g.
+       -Dlibdir=../atoms-java/extern to build atoms-java against them -->
+  <target name="install-jars" depends="jar">
     <property name="libdir" value="${prefix}/lib"/>
     <mkdir dir="${libdir}"/>
     <copy file="${jarname}" todir="${libdir}"/>
@@ -67,7 +183,12 @@
         <include name="*.jar"/>
       </fileset>
     </copy>
+  </target>
 
+
+  <!-- Install the jar files to a run-time directory, and generate start-up
+       scripts in ${prefix}/bin -->
+  <target name="install" depends="install-jars">
     <!-- Generate some scripts in bin area -->
     <property name="bindir" value="${prefix}/bin"/>
     <property name="server_invocation" value="java -DIce.ThreadPool.Server.SizeMax=20 -DIce.MessageSizeMax=32768 -jar ${jarname}"/>
@@ -143,6 +264,112 @@ java -DIce.MessageSizeMax=32768 -cp ${jarname} atnf.atoms.mon.gui.MonFrame
       <include name="*.jar"/>
     </fileset>
   </path>
+
+  <!-- 3rdParty jar files to unpack into the full-cream jar. Class names below are
+       relative to atnf.atoms.mon. The Ice jars are copied into 3rdParty from
+       ice/ by the compile target. -->
+  <path id="fullcream-libs">
+    <filelist dir="3rdParty">
+      <!-- Ice: comms, client, gui, IceStormSubscriber -->
+      <file name="ice-${ice-version}.jar"/>
+      <file name="icestorm-${ice-version}.jar"/>
+      <file name="open-monica-ice-${ice-version}.jar"/>
+      <!-- org.apache.log4j: used throughout. log4j-1.2-api is the log4j 1.x
+           bridge; log4j-api and log4j-core are needed with it at run time -->
+      <file name="log4j-1.2-api-2.19.0.jar"/>
+      <file name="log4j-api-2.19.0.jar"/>
+      <file name="log4j-core-2.19.0.jar"/>
+      <!-- org.jfree: gui.monpanel.ATTimeSeries, ATXYPlot, DialPanel.
+           jcommon is needed by jfreechart -->
+      <file name="jfreechart-1.0.13.jar"/>
+      <file name="jcommon-1.0.16.jar"/>
+      <!-- net.miginfocom: gui.MonFrame -->
+      <file name="miglayout-4.0-swing.jar"/>
+      <!-- com.jcraft.jsch: util.SecureTunnel -->
+      <file name="jsch-0.1.54.jar"/>
+      <!-- javax.mail, com.sun.mail: util.MailSender. javax.activation is
+           needed by mail.jar; it was part of the JDK up to Java 8 (whose own
+           copy then takes precedence) but was removed in Java 11 -->
+      <file name="mail.jar"/>
+      <file name="javax.activation-1.2.0.jar"/>
+      <!-- org.tinyradius: util.RADIUSAuthenticator. commons-logging is needed
+           by TinyRadius -->
+      <file name="TinyRadius-1.0.jar"/>
+      <file name="commons-logging.jar"/>
+      <!-- org.apache.commons.daemon: DaemonWrapper -->
+      <file name="commons-daemon-1.0.3.jar"/>
+      <!-- org.nfunk.jep: translation.TranslationCalculation, TranslationEQ -->
+      <file name="jep-2.4.1.jar"/>
+      <!-- org.apache.commons.math3: translation.TranslationFilteredMean,
+           TranslationHermiteInterpolator -->
+      <file name="commons-math3-3.2.jar"/>
+      <!-- gov.aps.jca, com.cosylab.epics: externalsystem.EPICS,
+           transaction.TransactionEPICS, TransactionEPICSMonitor -->
+      <file name="jca-2.3.6.jar"/>
+      <file name="caj-1.1.15.jar"/>
+      <!-- net.wimpi.modbus: externalsystem.ModbusInterface -->
+      <file name="jamod.jar"/>
+      <!-- org.snmp4j: externalsystem.SNMP -->
+      <file name="SNMP4J.jar"/>
+      <!-- com.eclipsesource.json: externalsystem.JSONSocket -->
+      <file name="minimal-json.jar"/>
+      <!-- JDBC driver for archiver.PointArchiverMySQL (loaded by
+           DriverManager, not referenced directly) -->
+      <file name="mysql-connector-java-5.1.16-bin.jar"/>
+      <!-- org.influxdb: archiver.PointArchiverInfluxDb. The jars after it are
+           needed by influxdb-java, not by open-monica directly -->
+      <file name="influxdb-java-2.5.jar"/>
+      <file name="retrofit-2.1.0.jar"/>
+      <file name="converter-moshi-2.1.0.jar"/>
+      <file name="moshi-1.2.0.jar"/>
+      <file name="okhttp-3.5.0.jar"/>
+      <file name="logging-interceptor-3.5.0.jar"/>
+      <file name="okio-1.11.0.jar"/>
+      <file name="guava-20.0.jar"/>
+      <!-- org.apache.commons.io: archiver.influx.OrderedProperties -->
+      <file name="commons-io-2.5.jar"/>
+      <!-- Not used by open-monica itself, only by the separate REST server
+           in clientlibs/restlet (see 3rdParty/README) -->
+      <file name="org.restlet.jar"/>
+      <file name="gson-2.1.jar"/>
+    </filelist>
+  </path>
+
+  <!-- 3rdParty jar files to unpack into the GUI client jar: those reachable
+       from atnf.atoms.mon.gui and atnf.atoms.mon.client (cf. the jar list in
+       default-files/OpenMoniCA.JNLP, plus mail.jar and javax.activation for
+       MailSender). See
+       fullcream-libs for what uses each jar. -->
+  <path id="client-libs">
+    <filelist dir="3rdParty">
+      <file name="ice-${ice-version}.jar"/>
+      <file name="open-monica-ice-${ice-version}.jar"/>
+      <file name="log4j-1.2-api-2.19.0.jar"/>
+      <file name="log4j-api-2.19.0.jar"/>
+      <file name="log4j-core-2.19.0.jar"/>
+      <file name="jfreechart-1.0.13.jar"/>
+      <file name="jcommon-1.0.16.jar"/>
+      <file name="miglayout-4.0-swing.jar"/>
+      <file name="jsch-0.1.54.jar"/>
+      <file name="mail.jar"/>
+      <file name="javax.activation-1.2.0.jar"/>
+    </filelist>
+  </path>
+
+  <!-- Config files from ${clientconfdir} to build into the GUI client jar.
+       A copy earlier on the classpath (e.g. -cp conf-dir:open-monica-client.jar)
+       takes precedence. monitor-config.txt is deliberately left out, as it can
+       hold passwords; the client only needs it for email and pub/sub, so give
+       it on the classpath or with -DMoniCA.ConfFile=... in that case. -->
+  <filelist id="client-config" dir="${clientconfdir}">
+    <!-- Servers offered when the client starts: client.MonClientUtil -->
+    <file name="monitor-servers.txt"/>
+    <!-- Plugin panel classes to preload: gui.MonPanel -->
+    <file name="monitor-preloads.txt"/>
+    <!-- Logging configuration, in log4j 1 format, so it is only read when
+         run with -Dlog4j1.compatibility=true -->
+    <file name="log4j.properties"/>
+  </filelist>
 
   <!-- Get list of 3rdParty jar files formatted for manifest file -->
   <pathconvert property="3rdPartyMF" pathsep=" ">  
