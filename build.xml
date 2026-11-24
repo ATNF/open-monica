@@ -334,10 +334,6 @@ java -DIce.MessageSizeMax=32768 -cp ${jarname} atnf.atoms.mon.gui.MonFrame
       <file name="guava-20.0.jar"/>
       <!-- org.apache.commons.io: archiver.influx.OrderedProperties -->
       <file name="commons-io-2.5.jar"/>
-      <!-- Not used by open-monica itself, only by the separate REST server
-           in clientlibs/restlet (see 3rdParty/README) -->
-      <file name="org.restlet.jar"/>
-      <file name="gson-2.1.jar"/>
     </filelist>
   </path>
 
