@@ -9,8 +9,11 @@
   <property name="jarname" value="open-monica.jar"/>
   <property name="prefix" value="/usr/local/"/>
   <property name="ice-version" value="3.6.3"/>
-  <!-- Self-contained jar built by the fullcream target (override with -Dfullcreamname=...) -->
-  <property name="fullcreamname" value="${jarname}"/>
+  <!-- Self-contained jar built by the fullcream target (override with
+       -Dfullcreamname=...). It has a different name from ${jarname}, so that
+       a stale full-cream jar is never mistaken for the normal one; it is
+       installed as ${jarname} by install-fullcream. -->
+  <property name="fullcreamname" value="open-monica-full.jar"/>
   <!-- GUI client jar built by the fullcream target (override with -Dclientjarname=...) -->
   <property name="clientjarname" value="open-monica-client.jar"/>
   <!-- Directory holding the config files built into the GUI client jar, see
@@ -25,6 +28,7 @@
     <delete dir="${javadoc}"/>
     <delete dir="${fullcream-work}"/>
     <delete file="${jarname}"/>
+    <delete file="${fullcreamname}"/>
     <delete file="${clientjarname}"/>
   </target>
   
@@ -162,11 +166,13 @@
 
 
   <!-- Install only the full-cream server and client jars to ${libdir}
-       (default ${prefix}/lib, override with -Dlibdir=... or -Dprefix=...) -->
+       (default ${prefix}/lib, override with -Dlibdir=... or -Dprefix=...).
+       The server jar is installed as ${jarname}, so scripts and atoms-java
+       find it under the usual name. -->
   <target name="install-fullcream" depends="fullcream">
     <property name="libdir" value="${prefix}/lib"/>
     <mkdir dir="${libdir}"/>
-    <copy file="${fullcreamname}" todir="${libdir}"/>
+    <copy file="${fullcreamname}" tofile="${libdir}/${jarname}"/>
     <copy file="${clientjarname}" todir="${libdir}"/>
   </target>
 
