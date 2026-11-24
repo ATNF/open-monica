@@ -172,8 +172,8 @@
   <target name="install-fullcream" depends="fullcream">
     <property name="libdir" value="${prefix}/lib"/>
     <mkdir dir="${libdir}"/>
-    <copy file="${fullcreamname}" tofile="${libdir}/${jarname}"/>
-    <copy file="${clientjarname}" todir="${libdir}"/>
+    <copy file="${fullcreamname}" tofile="${libdir}/${jarname}" overwrite="true"/>
+    <copy file="${clientjarname}" todir="${libdir}" overwrite="true"/>
   </target>
 
 
@@ -183,7 +183,7 @@
   <target name="install-jars" depends="jar">
     <property name="libdir" value="${prefix}/lib"/>
     <mkdir dir="${libdir}"/>
-    <copy file="${jarname}" todir="${libdir}"/>
+    <copy file="${jarname}" todir="${libdir}" overwrite="true"/>
     <copy todir="${libdir}">
       <fileset dir="3rdParty/">
         <include name="*.jar"/>
