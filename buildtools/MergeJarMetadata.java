@@ -25,7 +25,7 @@ import org.apache.logging.log4j.core.config.plugins.processor.PluginCache;
  * Build-time helper for the "fullcream" target. Merges the META-INF files which would otherwise collide when several
  * dependency jars are unpacked into a single jar:
  * <ul>
- * <li>META-INF/services/* - provider lists are concatenated (e.g. java.sql.Driver from both JDBC drivers). The
+ * <li>META-INF/services/* - provider lists are concatenated (e.g. java.sql.Driver from any JDBC providers). The
  * javax.annotation.processing.Processor list is dropped, so that compiling against the jar doesn't run log4j-core's
  * annotation processor.
  * <li>Log4j2Plugins.dat - log4j plugin caches are merged using log4j-core's own PluginCache.
