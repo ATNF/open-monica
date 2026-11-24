@@ -1,6 +1,6 @@
 .idea
 open-monica.iml
-open-monica*.jar
+/open-monica*.jar
 3rdParty/*ice*-*.jar
 out
 build/
