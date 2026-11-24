@@ -25,7 +25,9 @@ import org.apache.logging.log4j.core.config.plugins.processor.PluginCache;
  * Build-time helper for the "fullcream" target. Merges the META-INF files which would otherwise collide when several
  * dependency jars are unpacked into a single jar:
  * <ul>
- * <li>META-INF/services/* - provider lists are concatenated (e.g. java.sql.Driver from both JDBC drivers).
+ * <li>META-INF/services/* - provider lists are concatenated (e.g. java.sql.Driver from both JDBC drivers). The
+ * javax.annotation.processing.Processor list is dropped, so that compiling against the jar doesn't run log4j-core's
+ * annotation processor.
  * <li>Log4j2Plugins.dat - log4j plugin caches are merged using log4j-core's own PluginCache.
  * <li>Top-level META-INF LICENSE/NOTICE/DEPENDENCIES files - copied to META-INF/licenses/&lt;jar name&gt;/ so none are
  * lost.
@@ -36,6 +38,8 @@ import org.apache.logging.log4j.core.config.plugins.processor.PluginCache;
  */
 public class MergeJarMetadata {
   private static final String SERVICES = "META-INF/services/";
+  /** Dropped rather than merged: see the class comment. */
+  private static final String PROCESSOR_SERVICE = SERVICES + "javax.annotation.processing.Processor";
   private static final String PLUGIN_CACHE = "META-INF/org/apache/logging/log4j/core/config/plugins/Log4j2Plugins.dat";
 
   public static void main(String[] args) throws IOException {
@@ -53,7 +57,7 @@ public class MergeJarMetadata {
         for (Enumeration<JarEntry> e = jf.entries(); e.hasMoreElements();) {
           JarEntry entry = e.nextElement();
           String name = entry.getName();
-          if (entry.isDirectory()) {
+          if (entry.isDirectory() || name.equals(PROCESSOR_SERVICE)) {
             continue;
           }
           if (name.startsWith(SERVICES) && name.indexOf('/', SERVICES.length()) == -1) {
